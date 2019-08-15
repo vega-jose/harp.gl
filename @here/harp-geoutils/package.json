@@ -2,8 +2,8 @@
     "name": "@here/harp-geoutils",
     "version": "0.4.3",
     "description": "Utility classes for working with geospatial data",
-    "main": "index.js",
-    "typings": "index",
+    "main": "dist/index.js",
+    "typings": "dist/index.d.ts",
     "scripts": {
         "build": "tsc",
         "test": "cross-env mocha --require source-map-support/register $EXTRA_MOCHA_ARGS ./test/*.js",
