@@ -26,6 +26,10 @@ export interface ViewRanges {
      */
     far: number;
     /**
+     * Minimum viewing distance that may apply to near plane.
+     */
+    minimum: number;
+    /**
      * Maximum possible visibility range in camera space, regardless of camera orientation.
      * @note Holds the maximum value that may be returned for [[far]] plane distance at
      * certain camera position and orientation. You may use this value to calculate
@@ -124,88 +128,30 @@ export class InterpolatedClipPlanesEvaluator implements ClipPlanesEvaluator {
             assert(false, "Unsuported projection type");
         }
 
-        const viewRanges: ViewRanges = { near: nearPlane, far: farPlane, maximum: farPlane };
+        const viewRanges: ViewRanges = {
+            near: nearPlane,
+            far: farPlane,
+            minimum: this.nearMin,
+            maximum: farPlane
+        };
         return viewRanges;
     }
 }
 
 /**
- * Simple camera clip planes evaluator that computes near plane based on camera to ground distance.
- *
- * This evaluator supports both planar and spherical projections, although it behaviour is
- * slightly different in each case. General algorithm sets near plane and far plane close
- * to ground level, but taking into account some predefined margins.
- * @note This simple evaluator does behave correctly when camera is always pointing downwards the
- * ground surface (top view) along surface normal, but does not preserve correct planes when using
- * modifying camera pitch (tilt) angle. Suitable only top view camera modes.
+ * Add support for elevation constraints.
  */
-export class AltitudeBasedClipPlanesEvaluator implements ClipPlanesEvaluator {
-    /**
-     * Helper for reducing number of objects created at runtime.
-     */
-    protected m_tmpVectors: THREE.Vector3[] = [
-        new THREE.Vector3(),
-        new THREE.Vector3(),
-        new THREE.Vector3()
-    ];
-    /**
-     * Helper object for reducing performance impact.
-     */
-    protected m_tmpQuaternion: THREE.Quaternion = new THREE.Quaternion();
+export abstract class ElevationBasedClipPlanesEvaluator implements ClipPlanesEvaluator {
     private m_maxElevation: number;
     private m_minElevation: number;
-    private m_minimumViewRange: ViewRanges;
 
-    /**
-     * Allows to setup near/far offsets (margins), rendered geometry elevation relative to sea
-     * level as also minimum near plane and maximum far plane distance constraints.
-     * It is strongly recommended to set some reasonable [[nearFarMargin]] (offset) between near
-     * and far planes to avoid flickering.
-     * @param maxElevation defines near plane offset from the ground in the surface normal
-     * direction, positive values allows to render elevated terrain features (mountains,
-     * buildings).
-     * @param minElevation defines far plane offset from the ground surface, negative values moves
-     * far plane below the ground level (use it to render depressions).
-     * @param nearMin minimum allowable near plane distance from camera, must be bigger then zero.
-     * @param nearFarMargin minimum distance between near and far plane, have to be significantly
-     * bigger then zero (especially if [[maxElevation]], [[minElevation]] are equal), otherwise you
-     * may notice flickering during rendering, or even render empty scene if frustum planes are
-     * almost equal.
-     * @param farMaxRatio maximum ratio between ground and far plane distance, allows to limit
-     * viewing distance at overall. Have to be bigger then 1.0.
-     * @note Keep in mind that this evaluator does not evaluate terrain (or building) elevation
-     * automatically, to keep such features rendered (between frustum planes) use [[minElevation]],
-     * [[maxElevation]] constraints. You may change this parameters at any time, but it requires
-     * repeating [[evaluatePlanes]] step, if your camera is moving you need to evaluate planes
-     * anyway.
-     * @note You may treat [[minElevation]] and [[maxElevation]] parameters as the maximum and
-     * minimum renderable elevation respectivelly along the surface normal, when camera is
-     * constantly looking downwards (top-down view). If you need [[ClipPlanesEvaluator]] for
-     * cameras that support tilt or yaw please use [[TiltBasedClipPlanesEvaluator]].
-     * @note [[nearFarMaxRatio]] does not limit far plane when spherical projection is in use,
-     * the algorithm used there estimates distance to point on tangent where line from camera
-     * touches the sphere horizont and there is no reason to clamp it.
-     */
-    constructor(
-        maxElevation: number = 200,
-        minElevation: number = -50,
-        readonly nearMin: number = 0.1,
-        readonly nearFarMargin: number = 1.0,
-        readonly farMaxRatio = 1.8
-    ) {
+    constructor(maxElevation: number, minElevation: number) {
         assert(maxElevation >= minElevation);
-        assert(nearMin > 0);
-        assert(nearFarMargin > epsilon);
-        assert(farMaxRatio > 1.0);
         this.m_minElevation = minElevation;
         this.m_maxElevation = maxElevation;
-        this.m_minimumViewRange = {
-            near: nearMin,
-            far: nearMin + nearFarMargin,
-            maximum: Math.max(nearMin * farMaxRatio, nearMin + nearFarMargin)
-        };
     }
 
+    abstract evaluateClipPlanes(camera: THREE.Camera, projection: Projection): ViewRanges;
     /**
      * Set maximum elevation above sea level to be rendered.
      * @param elevation the elevation (altitude) value in world units (meters).
@@ -256,6 +202,81 @@ export class AltitudeBasedClipPlanesEvaluator implements ClipPlanesEvaluator {
      */
     get minElevation(): number {
         return this.m_minElevation;
+    }
+}
+
+/**
+ * Simple camera clip planes evaluator that computes near plane based on camera to ground distance.
+ *
+ * This evaluator supports both planar and spherical projections, although it behaviour is
+ * slightly different in each case. General algorithm sets near plane and far plane close
+ * to ground level, but taking into account some predefined margins.
+ * @note This simple evaluator does behave correctly when camera is always pointing downwards the
+ * ground surface (top view) along surface normal, but does not preserve correct planes when using
+ * modifying camera pitch (tilt) angle. Suitable only top view camera modes.
+ */
+export class AltitudeBasedClipPlanesEvaluator extends ElevationBasedClipPlanesEvaluator {
+    /**
+     * Helper for reducing number of objects created at runtime.
+     */
+    protected m_tmpVectors: THREE.Vector3[] = [
+        new THREE.Vector3(),
+        new THREE.Vector3(),
+        new THREE.Vector3()
+    ];
+    /**
+     * Helper object for reducing performance impact.
+     */
+    protected m_tmpQuaternion: THREE.Quaternion = new THREE.Quaternion();
+    private m_minimumViewRange: ViewRanges;
+
+    /**
+     * Allows to setup near/far offsets (margins), rendered geometry elevation relative to sea
+     * level as also minimum near plane and maximum far plane distance constraints.
+     * It is strongly recommended to set some reasonable [[nearFarMargin]] (offset) between near
+     * and far planes to avoid flickering.
+     * @param maxElevation defines near plane offset from the ground in the surface normal
+     * direction, positive values allows to render elevated terrain features (mountains,
+     * buildings).
+     * @param minElevation defines far plane offset from the ground surface, negative values moves
+     * far plane below the ground level (use it to render depressions).
+     * @param nearMin minimum allowable near plane distance from camera, must be bigger then zero.
+     * @param nearFarMargin minimum distance between near and far plane, have to be significantly
+     * bigger then zero (especially if [[maxElevation]], [[minElevation]] are equal), otherwise you
+     * may notice flickering during rendering, or even render empty scene if frustum planes are
+     * almost equal.
+     * @param farMaxRatio maximum ratio between ground and far plane distance, allows to limit
+     * viewing distance at overall. Have to be bigger then 1.0.
+     * @note Keep in mind that this evaluator does not evaluate terrain (or building) elevation
+     * automatically, to keep such features rendered (between frustum planes) use [[minElevation]],
+     * [[maxElevation]] constraints. You may change this parameters at any time, but it requires
+     * repeating [[evaluatePlanes]] step, if your camera is moving you need to evaluate planes
+     * anyway.
+     * @note You may treat [[minElevation]] and [[maxElevation]] parameters as the maximum and
+     * minimum renderable elevation respectivelly along the surface normal, when camera is
+     * constantly looking downwards (top-down view). If you need [[ClipPlanesEvaluator]] for
+     * cameras that support tilt or yaw please use [[TiltBasedClipPlanesEvaluator]].
+     * @note [[nearFarMaxRatio]] does not limit far plane when spherical projection is in use,
+     * the algorithm used there estimates distance to point on tangent where line from camera
+     * touches the sphere horizont and there is no reason to clamp it.
+     */
+    constructor(
+        maxElevation: number = EarthConstants.MAX_ELEVATION,
+        minElevation: number = EarthConstants.MIN_ELEVATION,
+        readonly nearMin: number = 0.1,
+        readonly nearFarMargin: number = 1.0,
+        readonly farMaxRatio = 1.8
+    ) {
+        super(maxElevation, minElevation);
+        assert(nearMin > 0);
+        assert(nearFarMargin > epsilon);
+        assert(farMaxRatio > 1.0);
+        this.m_minimumViewRange = {
+            near: nearMin,
+            far: nearMin + nearFarMargin,
+            minimum: this.nearMin,
+            maximum: Math.max(nearMin * farMaxRatio, nearMin + nearFarMargin)
+        };
     }
 
     /**
@@ -308,6 +329,7 @@ export class AltitudeBasedClipPlanesEvaluator implements ClipPlanesEvaluator {
         const viewRanges: ViewRanges = {
             near: nearPlane,
             far: farPlane,
+            minimum: this.nearMin,
             maximum: Math.max(farMax, farPlane)
         };
         return viewRanges;
@@ -408,7 +430,12 @@ export class AltitudeBasedClipPlanesEvaluator implements ClipPlanesEvaluator {
         farPlane = Math.max(farPlane, cameraAltitude - this.minElevation);
         farPlane = Math.max(farPlane, nearPlane + this.nearFarMargin);
 
-        const viewRanges: ViewRanges = { near: nearPlane, far: farPlane, maximum: farPlane };
+        const viewRanges: ViewRanges = {
+            near: nearPlane,
+            far: farPlane,
+            minimum: this.nearMin,
+            maximum: farPlane
+        };
         return viewRanges;
     }
 }
@@ -598,6 +625,7 @@ export class TiltBasedClipPlanesEvaluator extends AltitudeBasedClipPlanesEvaluat
         const farMax = lookAtDist * this.farMaxRatio;
         clipPlanes.near = Math.max(clipPlanes.near, this.nearMin);
         clipPlanes.far = Math.min(clipPlanes.far, farMax);
+        clipPlanes.minimum = this.nearMin;
         clipPlanes.maximum = farMax;
         return clipPlanes;
     }
@@ -700,6 +728,7 @@ export class TiltBasedClipPlanesEvaluator extends AltitudeBasedClipPlanesEvaluat
         // tangent based far plane distance.
         clipPlanes.far = Math.max(clipPlanes.far, cameraAltitude - this.minElevation);
         clipPlanes.far = Math.max(clipPlanes.far, clipPlanes.near + this.nearFarMargin);
+        clipPlanes.minimum = this.nearMin;
         clipPlanes.maximum = clipPlanes.far;
         return clipPlanes;
     }
@@ -741,6 +770,7 @@ export class FixedClipPlanesEvaluator implements ClipPlanesEvaluator {
         const viewRanges: ViewRanges = {
             near: this.m_nearPlane,
             far: this.m_farPlane,
+            minimum: this.minNear,
             maximum: this.m_farPlane
         };
         return viewRanges;
