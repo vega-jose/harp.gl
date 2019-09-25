@@ -96,7 +96,7 @@ export abstract class Expr {
         } else if (node === null) {
             return NullLiteralExpr.instance;
         } else if (typeof node === "boolean") {
-            return new BooleanLiteralExpr(node);
+            return node ? BooleanLiteralExpr.trueInstance : BooleanLiteralExpr.falseInstance;
         } else if (typeof node === "number") {
             return new NumberLiteralExpr(node);
         } else if (typeof node === "string") {
@@ -427,7 +427,10 @@ export class NullLiteralExpr extends Expr {
  * @hidden
  */
 export class BooleanLiteralExpr extends LiteralExpr {
-    constructor(readonly value: boolean) {
+    static trueInstance = new BooleanLiteralExpr(true);
+    static falseInstance = new BooleanLiteralExpr(false);
+
+    protected constructor(readonly value: boolean) {
         super();
     }
 
@@ -525,7 +528,7 @@ export class CallExpr extends Expr {
     }
 }
 
-type MatchLabel = number | string | number[] | string[];
+export type MatchLabel = number | string | number[] | string[];
 
 /**
  * @hidden
