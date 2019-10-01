@@ -6,20 +6,18 @@
 
 export default {
     extrude_line_vert_func: `
-void extrudeLine(vec2 segment, vec4 bt, vec3 t, float lineWidth, inout vec3 pos, inout vec2 uv) {
-    float uu = uv.x / 2.0 + 0.5;
-    float ss = mix(segment.x, segment.y, uu);
-
-    float angle = bt.w;
-    vec3 dir = bt.xyz;
-    if (angle != 0.0) {
-        pos += uv.y * lineWidth * dir / cos(angle / 2.0);
-        uv.x = ss + uv.x * lineWidth * uv.y * tan(angle / 2.0);
+vec3 extrudeLine(vec3 vertexPosition, float linePosition, float lineWidth, vec4 bt, vec3 t, inout vec2 uv) {
+    vec3 result = vertexPosition;
+    if (bt.w != 0.0) {
+        result += uv.y * lineWidth * bt.xyz / cos(bt.w / 2.0);
+        uv.x = linePosition + uv.x * lineWidth * uv.y * tan(bt.w / 2.0);
     }
     else {
-        pos += uv.y * lineWidth * dir + uv.x * lineWidth * t;
-        uv.x = ss + uv.x * lineWidth;
+        result += uv.y * lineWidth * bt.xyz + uv.x * lineWidth * t;
+        uv.x = linePosition + uv.x * lineWidth;
     }
+    uv.y *= lineWidth;
+    return result;
 }
 `,
     join_dist_func: `
@@ -35,20 +33,14 @@ float joinDist(vec2 segment, vec2 texcoord) {
 }
 `,
     round_edges_and_add_caps: `
-float roundEdgesAndAddCaps(
-        in vec2 segment,
-        in vec2 uv,
-        in float lineEnds,
-        in float vExtrusionStrength
-    ) {
+float roundEdgesAndAddCaps(in vec2 coords, in float extrusionStrength) {
 
     float dist = 0.0;
 
     #if defined(CAPS_NONE)
-        if (lineEnds > -0.1 && vExtrusionStrength < 1.0) {
-            dist = max((lineEnds + 0.1) / 0.1, abs(uv.y));
-        } else {
-            dist = joinDist(segment, uv);
+        dist = abs(coords.y);
+        if (coords.x > 1.0 || coords.x < 0.0) {
+            dist = 2.0;
         }
     #elif defined(CAPS_SQUARE)
         if (lineEnds > 0.0 && vExtrusionStrength < 1.0) {
@@ -70,7 +62,15 @@ float roundEdgesAndAddCaps(
             dist = joinDist(segment, uv);
         }
     #else
-        dist = joinDist(segment, uv);
+        dist = abs(coords.y);
+        if (coords.x > 1.0) {
+            vec2 a = vec2((coords.x - 1.0) / extrusionStrength, coords.y);
+            dist = max(dist, length(a));
+        }
+        else if (coords.x < 0.0) {
+            vec2 a = vec2(coords.x / extrusionStrength, coords.y);
+            dist = max(dist, length(a));
+        }
     #endif
 
     return dist;

@@ -52,13 +52,8 @@ uniform float outlineWidth;
 uniform sampler2D displacementMap;
 #endif
 
-varying vec2 vExtrusionCoord;
-varying vec2 vSegment;
-varying float vResultLineWidth;
 varying vec3 vPosition;
-varying float vLength;
-varying float vExtrusionStrength;
-
+varying vec4 vCoords;
 #if USE_COLOR
 attribute vec3 color;
 varying vec3 vColor;
@@ -72,28 +67,37 @@ varying vec3 vColor;
 
 #include <extrude_line_vert_func>
 
+// Vertex shader should only output:
+// - extruded position (vPosition).
+// - line coords, in the range: [[0...lineLength], [-lineWidth, lineWidth]] (vCoords).
+// - color, if needed (vColor).
 void main() {
-    vResultLineWidth = lineWidth + outlineWidth;
-    vSegment = abs(extrusionCoord.xy) - SEGMENT_OFFSET;
-    vLength = extrusionCoord.z;
-
-    vec3 pos = position;
+    // Calculate the vertex position inside the line (segment) and extrusion direction.
+    float linePos = mix(
+        abs(extrusionCoord.x) - SEGMENT_OFFSET,
+        abs(extrusionCoord.y) - SEGMENT_OFFSET,
+        sign(extrusionCoord.x) / 2.0 + 0.5);
     vec2 extrusionDir = sign(extrusionCoord.xy);
-    vExtrusionStrength = extrusionDir.y * tan(bitangent.w / 2.0);
 
-    extrudeLine(vSegment, bitangent, tangent, vResultLineWidth, pos, extrusionDir);
+    // Calculate the extruded vertex position (and scale the extrusion direction).
+    vec3 pos = extrudeLine(position, linePos, lineWidth + outlineWidth, bitangent, tangent, extrusionDir);
 
+    // Store the normalized extrusion coordinates in vCoords (with their ranges).
+    vCoords = vec4(extrusionDir, extrusionCoord.z, lineWidth);
+    vCoords.xy /= vCoords.zw;
+
+    // Transform position.
     #ifdef USE_DISPLACEMENTMAP
     pos += normalize( normal ) * texture2D( displacementMap, uv ).x;
     #endif
-
-    vPosition = pos;
-    vExtrusionCoord = vec2(extrusionDir.x, extrusionDir.y * vResultLineWidth);
-
     vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
     gl_Position = projectionMatrix * mvPosition;
 
+    // Pass extruded position to fragment shader.
+    vPosition = pos;
+
     #if USE_COLOR
+    // Pass vertex color to fragment shader.
     vColor = color;
     #endif
 
@@ -121,13 +125,8 @@ uniform float gapSize;
 uniform vec3 dashColor;
 #endif
 
-varying vec2 vExtrusionCoord;
-varying vec2 vSegment;
-varying float vResultLineWidth;
 varying vec3 vPosition;
-varying float vLength;
-varying float vExtrusionStrength;
-
+varying vec4 vCoords;
 #if USE_COLOR
 varying vec3 vColor;
 #endif
@@ -146,20 +145,20 @@ void main() {
     float alpha = opacity;
     vec3 outputDiffuse = diffuse;
 
-    float lineEnds = max(vExtrusionCoord.x - vLength,- vExtrusionCoord.x);
-
     #if TILE_CLIP
     tileClip(vPosition.xy, tileSize);
     #endif
 
-    float pointDist = roundEdgesAndAddCaps(vSegment, vExtrusionCoord, lineEnds, vExtrusionStrength);
-    float dist = pointDist - vResultLineWidth;
+    float pointDist = roundEdgesAndAddCaps(vCoords.xy, vCoords.w / vCoords.z);
+    float dist = pointDist - (lineWidth + outlineWidth) / lineWidth;
     float width = fwidth(dist);
     alpha *= (1.0 - smoothstep(-width, width, dist));
 
     #if DASHED_LINE
-    float halfSegment = (dashSize + gapSize) / dashSize * 0.5;
-    float segmentDist = mod(vExtrusionCoord.x, dashSize + gapSize) / dashSize;
+    float d = dashSize / vCoords.z;
+    float g = gapSize / vCoords.z;
+    float halfSegment = (d + g) / d * 0.5;
+    float segmentDist = mod(vCoords.x, d + g) / d;
     float dashDist = 0.5 - distance(segmentDist, halfSegment);
     float dashWidth = fwidth(dashDist);
     float dashedBlendFactor = 1.0 - smoothstep(-dashWidth, dashWidth, dashDist);
@@ -170,7 +169,7 @@ void main() {
     #endif
 
     #ifdef USE_OUTLINE
-    float outlineDist = pointDist - lineWidth;
+    float outlineDist = pointDist - 1.0;
     float outlineFWidth = fwidth(outlineDist);
     float outlineBlendFactor = smoothstep(-outlineFWidth, outlineFWidth, outlineDist);
 
