@@ -42,7 +42,8 @@ function decodedTileHasGeometry(decodedTile: DecodedTile) {
         decodedTile.geometries.length ||
         (decodedTile.poiGeometries !== undefined && decodedTile.poiGeometries.length) ||
         (decodedTile.textGeometries !== undefined && decodedTile.textGeometries.length) ||
-        (decodedTile.textPathGeometries !== undefined && decodedTile.textPathGeometries.length)
+        (decodedTile.textPathGeometries !== undefined && decodedTile.textPathGeometries.length) ||
+        (decodedTile.pathGeometries !== undefined && decodedTile.pathGeometries.length)
     );
 }
 
