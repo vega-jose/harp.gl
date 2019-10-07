@@ -82,47 +82,104 @@ const MB_FACTOR = 1.0 / (1024.0 * 1024.0);
  * Missing Typedoc
  */
 class DataSourceCache {
-    readonly tileCache: LRUCache<number, Tile>;
-    readonly disposedTiles: Tile[] = [];
+    static getKey(tileCode: number, dataSource: DataSource): string {
+        return `${dataSource.name}_${tileCode}`;
+    }
 
-    resourceComputationType: ResourceComputationType = ResourceComputationType.EstimationInMb;
+    private readonly m_tileCache: LRUCache<string, Tile>;
+    private readonly m_disposedTiles: Tile[] = [];
+    private m_resourceComputationType: ResourceComputationType;
 
-    constructor(options: VisibleTileSetOptions, readonly dataSource: DataSource) {
-        this.resourceComputationType =
+    constructor(options: VisibleTileSetOptions) {
+        this.m_resourceComputationType =
             options.resourceComputationType === undefined
                 ? ResourceComputationType.EstimationInMb
                 : options.resourceComputationType;
-        this.tileCache = new LRUCache<number, Tile>(options.tileCacheSize, (tile: Tile) => {
-            if (this.resourceComputationType === ResourceComputationType.EstimationInMb) {
+        this.m_tileCache = new LRUCache<string, Tile>(options.tileCacheSize, (tile: Tile) => {
+            if (this.m_resourceComputationType === ResourceComputationType.EstimationInMb) {
                 // Default is size in MB.
                 return tile.memoryUsage * MB_FACTOR;
             } else {
                 return 1;
             }
         });
-        this.tileCache.evictionCallback = (_, tile) => {
+        this.m_tileCache.evictionCallback = (_, tile) => {
             if (tile.tileLoader !== undefined) {
                 // Cancel downloads as early as possible.
                 tile.tileLoader.cancel();
             }
-            this.disposedTiles.push(tile);
+            this.m_disposedTiles.push(tile);
         };
-        this.tileCache.canEvict = (_, tile) => {
+        this.m_tileCache.canEvict = (_, tile) => {
             // Tiles can be evicted that weren't requested in the last frame.
             return !tile.isVisible;
         };
     }
 
+    get resourceComputationType(): ResourceComputationType {
+        return this.m_resourceComputationType;
+    }
+
+    get capacity(): number {
+        return this.m_tileCache.capacity;
+    }
+
+    setCapacity(size: number, rct: ResourceComputationType) {
+        this.m_resourceComputationType = rct;
+        this.m_tileCache.setCapacityAndMeasure(size, (tile: Tile) => {
+            if (this.m_resourceComputationType === ResourceComputationType.EstimationInMb) {
+                // Default is size in MB.
+                return tile.memoryUsage * MB_FACTOR;
+            } else {
+                return 1;
+            }
+        });
+    }
+
+    get(tileCode: number, dataSource: DataSource): Tile | undefined {
+        return this.m_tileCache.get(DataSourceCache.getKey(tileCode, dataSource));
+    }
+
+    set(tileCode: number, tile: Tile, dataSource: DataSource) {
+        this.m_tileCache.set(DataSourceCache.getKey(tileCode, dataSource), tile);
+    }
+
+    delete(tile: Tile) {
+        const tileCode = TileOffsetUtils.getKeyForTileKeyAndOffset(tile.tileKey, tile.offset);
+        const tileKey = DataSourceCache.getKey(tileCode, tile.dataSource);
+        this.deleteByKey(tileKey);
+    }
+
+    deleteByKey(tileKey: string) {
+        this.m_tileCache.delete(tileKey);
+    }
+
     disposeTiles() {
-        this.disposedTiles.forEach(tile => {
+        this.m_disposedTiles.forEach(tile => {
             tile.dispose();
         });
 
-        this.disposedTiles.length = 0;
+        this.m_disposedTiles.length = 0;
     }
 
-    get(tileCode: number): Tile | undefined {
-        return this.tileCache.get(tileCode);
+    shrinkToCapacity() {
+        this.m_tileCache.shrinkToCapacity();
+    }
+
+    evictAll() {
+        this.m_tileCache.evictAll();
+    }
+
+    evictSelected(selector: (tile: Tile, key: string) => boolean) {
+        this.m_tileCache.evictSelected(selector);
+    }
+
+    forEach(callback: (tile: Tile, key: string) => void, inDataSource?: DataSource): void {
+        this.m_tileCache.forEach((entry: Tile, key: string) => {
+            if (inDataSource === undefined || entry.dataSource === inDataSource) {
+                callback(entry, key);
+            }
+        });
     }
 }
 
@@ -188,8 +245,8 @@ export class VisibleTileSet {
     allVisibleTilesLoaded: boolean = false;
     options: VisibleTileSetOptions;
 
-    private readonly m_dataSourceCache = new Map<string, DataSourceCache>();
     private readonly m_projectionMatrixOverride = new THREE.Matrix4();
+    private m_dataSourceCache: DataSourceCache;
     private m_viewRange: ViewRanges = { near: 0.1, far: Infinity, minimum: 0.1, maximum: Infinity };
     private m_elevationRange: ElevationRange = {
         minElevation: 0,
@@ -197,7 +254,7 @@ export class VisibleTileSet {
         calculationStatus: CalculationStatus.PendingApproximate
     };
 
-    private m_ResourceComputationType: ResourceComputationType =
+    private m_resourceComputationType: ResourceComputationType =
         ResourceComputationType.EstimationInMb;
 
     constructor(
@@ -206,6 +263,11 @@ export class VisibleTileSet {
         options: VisibleTileSetOptions
     ) {
         this.options = options;
+        this.m_resourceComputationType =
+            options.resourceComputationType === undefined
+                ? ResourceComputationType.EstimationInMb
+                : options.resourceComputationType;
+        this.m_dataSourceCache = new DataSourceCache(options);
     }
 
     /**
@@ -228,6 +290,7 @@ export class VisibleTileSet {
         computationType: ResourceComputationType = ResourceComputationType.EstimationInMb
     ): void {
         this.options.tileCacheSize = size;
+        // This effectivelly invalidates DataSourceCache
         this.resourceComputationType = computationType;
     }
 
@@ -252,16 +315,20 @@ export class VisibleTileSet {
      * tiles.
      */
     get resourceComputationType(): ResourceComputationType {
-        return this.m_ResourceComputationType;
+        return this.m_resourceComputationType;
     }
 
+    /**
+     * Sets the way tile cache is managing its elements.
+     *
+     * Cache may be either keeping number of elements stored or the memory consumed by them.
+     *
+     * @param computationType Type of algorith used in cache for checking full saturation,
+     * may be counting number of elements or memory consumed by them.
+     */
     set resourceComputationType(computationType: ResourceComputationType) {
-        this.m_ResourceComputationType = computationType;
-        this.m_dataSourceCache.forEach(dataStore => {
-            dataStore.tileCache.setCapacity(this.options.tileCacheSize);
-            dataStore.resourceComputationType = computationType;
-            dataStore.tileCache.shrinkToCapacity();
-        });
+        this.m_resourceComputationType = computationType;
+        this.m_dataSourceCache.setCapacity(this.options.tileCacheSize, computationType);
     }
 
     /**
@@ -392,14 +459,11 @@ export class VisibleTileSet {
             }
         });
 
+        this.m_dataSourceCache.shrinkToCapacity();
+
         let minElevation = EarthConstants.MAX_ELEVATION;
         let maxElevation = EarthConstants.MIN_ELEVATION;
         this.dataSourceTileList.forEach(renderListEntry => {
-            const dataSource = renderListEntry.dataSource;
-            const cache = this.m_dataSourceCache.get(dataSource.name);
-            if (cache !== undefined) {
-                cache.tileCache.shrinkToCapacity();
-            }
             // Calculate min/max elevation from every data source tiles,
             // datasources without elevationRangeSource will contribute to
             // values with zero levels for both elevations.
@@ -579,12 +643,11 @@ export class VisibleTileSet {
      *
      * Called by [[MapView]] when [[DataSource]] has been removed from [[MapView]].
      */
-    removeDataSource(dataSourceName: string) {
-        this.clearTileCache(dataSourceName);
+    removeDataSource(dataSource: DataSource) {
+        this.clearTileCache(dataSource);
         this.dataSourceTileList = this.dataSourceTileList.filter(
-            tileList => tileList.dataSource.name !== dataSourceName
+            tileList => tileList.dataSource !== dataSource
         );
-        this.m_dataSourceCache.delete(dataSourceName);
     }
 
     /**
@@ -595,16 +658,13 @@ export class VisibleTileSet {
      *
      * @param dataSourceName The name of the [[DataSource]].
      */
-    clearTileCache(dataSourceName?: string) {
-        if (dataSourceName !== undefined) {
-            const cache = this.m_dataSourceCache.get(dataSourceName);
-            if (cache) {
-                cache.tileCache.evictAll();
-            }
-        } else {
-            this.m_dataSourceCache.forEach(dataSourceCache => {
-                dataSourceCache.tileCache.evictAll();
+    clearTileCache(dataSource?: DataSource) {
+        if (dataSource !== undefined) {
+            this.m_dataSourceCache.evictSelected((tile: Tile, _) => {
+                return tile.dataSource === dataSource;
             });
+        } else {
+            this.m_dataSourceCache.evictAll();
         }
     }
 
@@ -635,40 +695,40 @@ export class VisibleTileSet {
      * Dispose tiles that are marked for removal by [[LRUCache]] algorithm.
      */
     disposePendingTiles() {
-        this.m_dataSourceCache.forEach(cache => {
-            cache.disposeTiles();
-        });
+        this.m_dataSourceCache.disposeTiles();
     }
 
+    /**
+     * Process callback function [[fun]] with each visible tile in set.
+     *
+     * @param fun The callback function to be called.
+     */
     forEachVisibleTile(fun: (tile: Tile) => void): void {
         for (const listEntry of this.dataSourceTileList) {
             listEntry.renderedTiles.forEach(fun);
         }
     }
 
-    forEachCachedTile(
-        fun: (tile: Tile) => void,
-        filterDataSource?: (ds: DataSource) => boolean
-    ): void {
-        this.m_dataSourceCache.forEach(dataSourceCache => {
-            if (filterDataSource === undefined || filterDataSource(dataSourceCache.dataSource)) {
-                dataSourceCache.tileCache.forEach(tile => {
-                    fun(tile);
-                });
-            }
-        });
+    /**
+     * Process callback function [[fun]] with each tile in the cache.
+     *
+     * Optional [[dataSource]] parameter limits processing to the tiles that belongs to
+     * DataSource passed in.
+     *
+     * @param fun The callback function to be called.
+     * @param dataSource The optional DataSource reference for tiles selection.
+     */
+    forEachCachedTile(fun: (tile: Tile) => void, dataSource?: DataSource): void {
+        this.m_dataSourceCache.forEach((tile, _) => fun(tile), dataSource);
     }
 
     /**
      * Dispose a `Tile` from cache, 'dispose()' is also called on the tile to free its resources.
      */
     disposeTile(tile: Tile): void {
-        const cache = this.m_dataSourceCache.get(tile.dataSource.name);
-        if (cache) {
-            const tileCode = TileOffsetUtils.getKeyForTileKeyAndOffset(tile.tileKey, tile.offset);
-            cache.tileCache.delete(tileCode);
-            tile.dispose();
-        }
+        // TODO: Consider using evict here!
+        this.m_dataSourceCache.delete(tile);
+        tile.dispose();
     }
 
     private getCacheSearchLevels(
@@ -695,6 +755,7 @@ export class VisibleTileSet {
      * flickering by rendering already loaded tiles from upper/higher zoom levels.
      */
     private fillMissingTilesFromCache() {
+        const tileCache = this.m_dataSourceCache;
         this.dataSourceTileList.forEach(renderListEntry => {
             const dataSource = renderListEntry.dataSource;
             const tilingScheme = dataSource.getTilingScheme();
@@ -709,24 +770,21 @@ export class VisibleTileSet {
                 DOWN,
                 BOTH
             }
-            const tileCache = this.m_dataSourceCache.get(dataSource.name);
             let defaultSearchDirection = SearchDirection.NONE;
 
-            if (tileCache !== undefined) {
-                const { searchLevelsUp, searchLevelsDown } = this.getCacheSearchLevels(
-                    dataSource,
-                    displayZoomLevel
-                );
+            const { searchLevelsUp, searchLevelsDown } = this.getCacheSearchLevels(
+                dataSource,
+                displayZoomLevel
+            );
 
-                defaultSearchDirection =
-                    searchLevelsDown > 0 && searchLevelsUp > 0
-                        ? SearchDirection.BOTH
-                        : searchLevelsDown > 0
-                        ? SearchDirection.DOWN
-                        : searchLevelsUp > 0
-                        ? SearchDirection.UP
-                        : SearchDirection.NONE;
-            }
+            defaultSearchDirection =
+                searchLevelsDown > 0 && searchLevelsUp > 0
+                    ? SearchDirection.BOTH
+                    : searchLevelsDown > 0
+                    ? SearchDirection.DOWN
+                    : searchLevelsUp > 0
+                    ? SearchDirection.UP
+                    : SearchDirection.NONE;
 
             let incompleteTiles: Map<number, SearchDirection> = new Map();
 
@@ -749,8 +807,6 @@ export class VisibleTileSet {
                 return;
             }
 
-            assert(tileCache !== undefined);
-
             // iterate over incomplete (not loaded tiles)
             // and find their parents or children that are in cache that can be rendered temporarily
             // until tile is loaded
@@ -766,7 +822,7 @@ export class VisibleTileSet {
 
                         if (!checkedTiles.has(parentCode) && !renderedTiles.get(parentCode)) {
                             checkedTiles.add(parentCode);
-                            const parentTile = tileCache!.get(parentCode);
+                            const parentTile = tileCache.get(parentCode, dataSource);
                             if (parentTile !== undefined && parentTile.hasGeometry) {
                                 // parentTile has geometry, so can be reused as fallback
                                 renderedTiles.set(parentCode, parentTile);
@@ -805,7 +861,7 @@ export class VisibleTileSet {
                                 offset
                             );
                             checkedTiles.add(childTileCode);
-                            const childTile = tileCache!.get(childTileCode);
+                            const childTile = tileCache.get(childTileCode, dataSource);
 
                             if (childTile !== undefined && childTile.hasGeometry) {
                                 // childTile has geometry, so can be reused as fallback
@@ -845,10 +901,9 @@ export class VisibleTileSet {
             return resultTile;
         }
 
-        const { tileCache } = this.getOrCreateCache(dataSource);
-
+        const tileCache = this.m_dataSourceCache;
         const tileKeyMortonCode = TileOffsetUtils.getKeyForTileKeyAndOffset(tileKey, offset);
-        let tile = tileCache.get(tileKeyMortonCode);
+        let tile = tileCache.get(tileKeyMortonCode, dataSource);
 
         if (tile !== undefined && tile.offset === offset) {
             updateTile(tile);
@@ -864,34 +919,21 @@ export class VisibleTileSet {
         if (tile !== undefined) {
             tile.offset = offset;
             updateTile(tile);
-            tileCache.set(tileKeyMortonCode, tile);
+            tileCache.set(tileKeyMortonCode, tile, dataSource);
             this.m_tileGeometryManager.initTile(tile);
         }
         return tile;
     }
 
-    private getOrCreateCache(dataSource: DataSource): DataSourceCache {
-        const dataSourceName = dataSource.name;
-
-        let dataSourceCache = this.m_dataSourceCache.get(dataSourceName);
-
-        if (dataSourceCache === undefined) {
-            dataSourceCache = new DataSourceCache(this.options, dataSource);
-
-            this.m_dataSourceCache.set(dataSourceName, dataSourceCache);
-        }
-
-        return dataSourceCache;
-    }
-
     private markDataSourceTilesDirty(renderListEntry: DataSourceTileList) {
-        const dataSourceCache = this.m_dataSourceCache.get(renderListEntry.dataSource.name);
-        const retainedTiles: Set<number> = new Set();
+        const dataSourceCache = this.m_dataSourceCache;
+        const retainedTiles: Set<string> = new Set();
 
         function markTileDirty(tile: Tile, tileGeometryManager: TileGeometryManager) {
             const tileCode = TileOffsetUtils.getKeyForTileKeyAndOffset(tile.tileKey, tile.offset);
-            if (!retainedTiles.has(tileCode)) {
-                retainedTiles.add(tileCode);
+            const tileKey = DataSourceCache.getKey(tileCode, tile.dataSource);
+            if (!retainedTiles.has(tileKey)) {
+                retainedTiles.add(tileKey);
                 if (tile.tileGeometryLoader !== undefined) {
                     tile.tileGeometryLoader.reset();
                 }
@@ -906,14 +948,12 @@ export class VisibleTileSet {
             markTileDirty(tile, this.m_tileGeometryManager);
         });
 
-        if (dataSourceCache !== undefined) {
-            dataSourceCache.tileCache.forEach((tile, tileCode) => {
-                if (!retainedTiles.has(tileCode)) {
-                    tile.dispose();
-                    dataSourceCache.tileCache.delete(tileCode);
-                }
-            });
-        }
+        dataSourceCache.forEach((tile, key) => {
+            if (!retainedTiles.has(key)) {
+                dataSourceCache.deleteByKey(key);
+                tile.dispose();
+            }
+        });
     }
 
     // Computes the visible tile keys for each supplied datasource.
