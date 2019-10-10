@@ -6,9 +6,10 @@
 
 import { GeoCoordinates } from "@here/harp-geoutils";
 import { MapControls, MapControlsUI } from "@here/harp-map-controls";
-import { CopyrightElementHandler, MapView } from "@here/harp-mapview";
-import { OmvDataSource } from "@here/harp-omv-datasource";
-import { accessToken, copyrightInfo } from "../config";
+import { CopyrightElementHandler, CopyrightInfo, MapView } from "@here/harp-mapview";
+import { APIFormat, OmvDataSource } from "@here/harp-omv-datasource";
+import { accessToken } from "../config";
+import { Mesh, BufferGeometry, Material, MeshStandardMaterial, Color } from "three";
 
 /**
  * MapView initialization sequence enables setting all the necessary elements on a map  and returns
@@ -108,6 +109,54 @@ export namespace HelloWorldExample {
 
         addOmvDataSource(map);
 
+        canvas.addEventListener("mouseup", (ev: MouseEvent) => {
+            const intersections = map.intersectMapObjects(ev.clientX, ev.clientY);
+            // console.log(intersection);
+            for (const i of intersections) {
+                if (
+                    i.intersection === undefined ||
+                    i.intersection.faceIndex === undefined ||
+                    i.intersection.face === undefined ||
+                    i.intersection.face === null
+                ) {
+                    continue;
+                }
+                const face = i.intersection.face;
+                const faceIndex = i.intersection.faceIndex;
+                const obj = i.intersection.object;
+                const userData = obj.userData;
+                if (userData.dataSource !== "omv-datasource") {
+                    continue;
+                }
+                console.log(i);
+
+                if (
+                    userData.dataSource === "omv-datasource" &&
+                    userData.kind.includes("building")
+                ) {
+                    const mesh = obj as Mesh;
+                    const bufferGeometry = mesh.geometry as BufferGeometry;
+                    bufferGeometry.clearGroups();
+                    bufferGeometry.addGroup(0, faceIndex * 3, 0);
+                    bufferGeometry.addGroup(faceIndex * 3, 3, 1);
+                    bufferGeometry.addGroup(faceIndex * 3 + 3, bufferGeometry.index.count, 0);
+
+                    const material = Array.isArray(mesh.material)
+                        ? mesh.material[0]
+                        : mesh.material;
+
+                    mesh.material = [material, material.clone()];
+
+                    const materials = mesh.material as Material[];
+                    (materials[1] as MeshStandardMaterial).color = new Color("#ff00ff");
+
+                    if (material.colorWrite === true) {
+                        break;
+                    }
+                }
+            }
+        });
+
         return map;
     }
 
@@ -120,7 +169,8 @@ export namespace HelloWorldExample {
             urlParams: {
                 access_token: accessToken
             },
-            copyrightInfo
+            copyrightInfo,
+            gatherFeatureIds: true
         });
         // end:harp_gl_hello_world_example_4.ts
 
