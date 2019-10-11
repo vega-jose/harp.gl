@@ -4,12 +4,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { GeoCoordinates } from "@here/harp-geoutils";
+import { GeoCoordinates, webMercatorTilingScheme } from "@here/harp-geoutils";
 import { MapControls, MapControlsUI } from "@here/harp-map-controls";
-import { CopyrightElementHandler, CopyrightInfo, MapView } from "@here/harp-mapview";
-import { APIFormat, OmvDataSource } from "@here/harp-omv-datasource";
-import { accessToken } from "../config";
-import { Mesh, BufferGeometry, Material, MeshStandardMaterial, Color } from "three";
+import { CopyrightElementHandler, MapAnchor, MapView, TileFeatureData } from "@here/harp-mapview";
+import { OmvDataSource } from "@here/harp-omv-datasource";
+import { BufferGeometry, Mesh, MeshStandardMaterial } from "three";
+import { accessToken, copyrightInfo } from "../config";
 
 /**
  * MapView initialization sequence enables setting all the necessary elements on a map  and returns
@@ -110,6 +110,10 @@ export namespace HelloWorldExample {
         addOmvDataSource(map);
 
         canvas.addEventListener("mouseup", (ev: MouseEvent) => {
+            while (map.mapAnchors.children.length > 0) {
+                map.mapAnchors.remove(map.mapAnchors.children[0]);
+            }
+
             const intersections = map.intersectMapObjects(ev.clientX, ev.clientY);
             // console.log(intersection);
             for (const i of intersections) {
@@ -122,37 +126,62 @@ export namespace HelloWorldExample {
                     continue;
                 }
                 const face = i.intersection.face;
-                const faceIndex = i.intersection.faceIndex;
+                let faceIndex = i.intersection.faceIndex * 3;
+                let count = 3;
                 const obj = i.intersection.object;
                 const userData = obj.userData;
                 if (userData.dataSource !== "omv-datasource") {
                     continue;
                 }
-                console.log(i);
 
+                // Find the whole feature for the clicked face
+                if (userData.feature !== undefined && userData.feature.starts !== undefined) {
+                    const feature = userData.feature as TileFeatureData;
+
+                    const startIndex = feature.starts!.findIndex(value => value > faceIndex);
+                    faceIndex = feature.starts![startIndex - 1];
+                    count = feature.starts![startIndex] - faceIndex;
+                }
                 if (
                     userData.dataSource === "omv-datasource" &&
                     userData.kind.includes("building")
                 ) {
                     const mesh = obj as Mesh;
                     const bufferGeometry = mesh.geometry as BufferGeometry;
-                    bufferGeometry.clearGroups();
-                    bufferGeometry.addGroup(0, faceIndex * 3, 0);
-                    bufferGeometry.addGroup(faceIndex * 3, 3, 1);
-                    bufferGeometry.addGroup(faceIndex * 3 + 3, bufferGeometry.index.count, 0);
+                    // bufferGeometry.clearGroups();
+                    // bufferGeometry.addGroup(0, faceIndex, 0);
+                    // bufferGeometry.addGroup(faceIndex, count, 1);
+                    // bufferGeometry.addGroup(faceIndex + count, bufferGeometry.index.count, 0);
 
                     const material = Array.isArray(mesh.material)
                         ? mesh.material[0]
                         : mesh.material;
-
-                    mesh.material = [material, material.clone()];
-
-                    const materials = mesh.material as Material[];
-                    (materials[1] as MeshStandardMaterial).color = new Color("#ff00ff");
-
-                    if (material.colorWrite === true) {
-                        break;
+                    if (material.colorWrite === false) {
+                        // We also get an intersection result for the depth-pre-pass. Ignore it.
+                        continue;
                     }
+
+                    //mesh.material = [material, material.clone()];
+                    // const materials = mesh.material as Material[];
+                    // (materials[1] as MeshStandardMaterial).color = new Color("#ff00ff");
+                    // if (material.colorWrite === true) {
+                    //     break;
+                    // }
+
+                    //FIXME: Don't clone the whole buffer but only copy the part that we need.
+                    const newBufferGeometry = bufferGeometry.clone();
+                    const newMaterial = material.clone();
+                    (newMaterial as MeshStandardMaterial).color.set("#ff00ff");
+                    (newMaterial as MeshStandardMaterial).depthTest = false;
+                    const mapAnchor: MapAnchor<Mesh> = new Mesh(newBufferGeometry, newMaterial);
+
+                    mapAnchor.geoPosition = webMercatorTilingScheme.getGeoBox(
+                        userData.tileKey
+                    ).center;
+                    mapAnchor.geoPosition.altitude = 500;
+                    mapAnchor.renderOrder = 1000000;
+                    map.mapAnchors.add(mapAnchor);
+                    console.log(map.mapAnchors);
                 }
             }
         });
