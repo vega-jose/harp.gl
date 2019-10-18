@@ -379,6 +379,7 @@ export class TileLoader {
 export class TileInfoLoader extends TileLoader {
     tileInfo?: TileInfo;
 
+    /** @override */
     protected startDecodeTile() {
         const payload = this.payload;
         if (payload === undefined) {

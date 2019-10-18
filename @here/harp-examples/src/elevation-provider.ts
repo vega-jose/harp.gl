@@ -36,9 +36,11 @@ class DummyElevationRangeSource implements ElevationRangeSource {
 
 // Dummy elevation source
 class DummyElevationSource extends DataSource {
+    /** @override */
     getTilingScheme(): TilingScheme {
         return hereTilingScheme;
     }
+    /** @override */
     getTile(tileKey: TileKey): Tile | undefined {
         return new Tile(this, tileKey);
     }

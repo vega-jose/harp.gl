@@ -289,6 +289,7 @@ export class TopViewClipPlanesEvaluator extends ElevationBasedClipPlanesEvaluato
         };
     }
 
+    /** @override */
     evaluateClipPlanes(mapView: MapView): ViewRanges {
         if (mapView.projection.type === ProjectionType.Spherical) {
             return this.evaluateDistanceSphericalProj(mapView.camera, mapView.projection);
@@ -502,6 +503,7 @@ export class TiltViewClipPlanesEvaluator extends TopViewClipPlanesEvaluator {
      */
     protected m_tmpPlane = new THREE.Plane();
 
+    /** @override */
     evaluateClipPlanes(mapView: MapView): ViewRanges {
         // Different algorithms are used for spherical and planar projections.
         if (mapView.projection.type === ProjectionType.Spherical) {

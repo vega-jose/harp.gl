@@ -53,6 +53,7 @@ export abstract class MapViewPoints extends THREE.Points {
      *
      * @param raycaster The raycaster.
      * @param intersects The array to fill with the results.
+     *
      */
     raycast(raycaster: PickingRaycaster, intersects: THREE.Intersection[]) {
         if (!this.enableRayTesting) {
@@ -187,6 +188,7 @@ function getPointInfo(
  * Point object that implements the raycasting of circles in screen space.
  */
 export class Circles extends MapViewPoints {
+    /** @override */
     testPoint(
         point: THREE.Vector3,
         screenPosition: THREE.Vector2,
@@ -215,6 +217,7 @@ export class Circles extends MapViewPoints {
  * Point object that implements the raycasting of squares in screen space.
  */
 export class Squares extends MapViewPoints {
+    /** @override */
     testPoint(
         point: THREE.Vector3,
         screenPosition: THREE.Vector2,

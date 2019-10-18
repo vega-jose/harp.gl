@@ -231,6 +231,7 @@ export class OmvDataSource extends TileDataSource<OmvTile> {
         };
     }
 
+    /** @override */
     async connect() {
         try {
             await super.connect();
@@ -276,6 +277,7 @@ export class OmvDataSource extends TileDataSource<OmvTile> {
         });
     }
 
+    /** @override */
     shouldPreloadTiles(): boolean {
         return true;
     }
@@ -286,6 +288,7 @@ export class OmvDataSource extends TileDataSource<OmvTile> {
      * @param zoomLevel Zoom level.
      * @param tileKey Level of the tile.
      * @returns `true` if the data source should be rendered.
+     * @override
      */
     shouldRender(zoomLevel: number, tileKey: TileKey): boolean {
         if (tileKey.level > this.maxZoomLevel) {
@@ -297,16 +300,19 @@ export class OmvDataSource extends TileDataSource<OmvTile> {
         return super.shouldRender(zoomLevel, tileKey);
     }
 
+    /** @override */
     setLanguages(languages?: string[]): void {
         if (languages !== undefined) {
             this.configureDecoder(undefined, undefined, languages, undefined);
         }
     }
 
+    /** @override */
     get storageLevelOffset() {
         return super.storageLevelOffset;
     }
 
+    /** @override */
     set storageLevelOffset(levelOffset: number) {
         super.storageLevelOffset = levelOffset;
         this.m_decoderOptions.storageLevelOffset = this.storageLevelOffset;
@@ -315,6 +321,7 @@ export class OmvDataSource extends TileDataSource<OmvTile> {
         });
     }
 
+    /** @override */
     setEnableElevationOverlay(enable: boolean) {
         if (this.m_decoderOptions.enableElevationOverlay !== enable) {
             this.m_decoderOptions.enableElevationOverlay = enable;

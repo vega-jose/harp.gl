@@ -496,6 +496,7 @@ export class VarExpr extends Expr {
         super();
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitVarExpr(this, context);
     }
@@ -517,6 +518,7 @@ export class NullLiteralExpr extends Expr {
         super();
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitNullLiteralExpr(this, context);
     }
@@ -531,6 +533,7 @@ export class BooleanLiteralExpr extends LiteralExpr {
         super();
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitBooleanLiteralExpr(this, context);
     }
@@ -545,6 +548,7 @@ export class NumberLiteralExpr extends LiteralExpr {
         super();
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitNumberLiteralExpr(this, context);
     }
@@ -559,6 +563,7 @@ export class StringLiteralExpr extends LiteralExpr {
         super();
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitStringLiteralExpr(this, context);
     }
@@ -577,6 +582,7 @@ export class ObjectLiteralExpr extends LiteralExpr {
         return Array.isArray(this.value);
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitObjectLiteralExpr(this, context);
     }
@@ -591,6 +597,7 @@ export class HasAttributeExpr extends Expr {
         super();
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitHasAttributeExpr(this, context);
     }
@@ -619,6 +626,7 @@ export class ContainsExpr extends Expr {
         super();
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitContainsExpr(this, context);
     }
@@ -642,6 +650,7 @@ export class CallExpr extends Expr {
         return this.args;
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitCallExpr(this, context);
     }
@@ -685,6 +694,7 @@ export class MatchExpr extends Expr {
         super();
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitMatchExpr(this, context);
     }
@@ -698,6 +708,7 @@ export class CaseExpr extends Expr {
         super();
     }
 
+    /** @override */
     accept<Result, Context>(visitor: ExprVisitor<Result, Context>, context: Context): Result {
         return visitor.visitCaseExpr(this, context);
     }
