@@ -767,6 +767,7 @@ export class MapView extends THREE.EventDispatcher {
     private m_thisFrameTilesChanged: boolean | undefined;
     private m_lastTileIds: string = "";
     private m_languages: string[] | undefined;
+    private m_politicalView: string | null;
     private m_copyrightInfo: CopyrightInfo[] = [];
     private m_screenSpaceBoxes: Math2D.Box[] = [];
     private m_screenSpaceLines: LineWithBound[] = [];
@@ -857,6 +858,7 @@ export class MapView extends THREE.EventDispatcher {
         this.m_options.enableStatistics = this.m_options.enableStatistics === true;
 
         this.m_languages = this.m_options.languages;
+        this.m_politicalView = null;
 
         if (
             !isProduction &&
@@ -1303,6 +1305,32 @@ export class MapView extends THREE.EventDispatcher {
         this.m_tileDataSources.forEach((dataSource: DataSource) => {
             dataSource.setLanguages(this.m_languages);
         });
+        this.update();
+    }
+
+    /**
+     * Get currently presented political point of view - the country code.
+     *
+     * @return Country code in ISO 3166-1 alpha-2 standard or null if majorly
+     * accepted (default) point of view is used.
+     */
+    get politicalView(): string | null {
+        return this.m_politicalView;
+    }
+
+    /**
+     * Set the point of view to be used when rendering disputed features.
+     *
+     * @param pov The code of country which point of view should be presented or
+     * null if default (commonly accepted) point of view should be set.
+     */
+    set politicalView(pov: string | null) {
+        console.log("MapView set politicalView: ", pov);
+        this.m_politicalView = pov;
+        this.m_tileDataSources.forEach((dataSource: DataSource) => {
+            dataSource.setPoliticalView(pov);
+        });
+        this.clearTileCache();
         this.update();
     }
 
