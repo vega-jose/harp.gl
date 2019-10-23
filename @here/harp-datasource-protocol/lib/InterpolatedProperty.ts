@@ -7,8 +7,9 @@
 import { Color, CubicInterpolant, DiscreteInterpolant, LinearInterpolant } from "three";
 
 import { LoggerManager } from "@here/harp-utils";
+import { Env, MapEnv, Value } from "./Env";
 import { ExponentialInterpolant } from "./ExponentialInterpolant";
-import { Expr, Value } from "./Expr";
+import { Expr, ExprScope } from "./Expr";
 import {
     InterpolatedProperty,
     InterpolatedPropertyDefinition,
@@ -77,6 +78,35 @@ export function isInterpolatedProperty(p: any): p is InterpolatedProperty {
 }
 
 /**
+ * The dynamic map properties used by [[getPropertyValue]].
+ * @hidden
+ */
+const dynamicPropertiesCache = {
+    $zoom: 0,
+    $pixelToMeters: 1
+};
+
+/**
+ * An internal [[Env]] used to keep getPropertyValue working.
+ * @hidden
+ */
+const dynamicPropertiesEnv = new MapEnv(dynamicPropertiesCache);
+
+/**
+ * Returns an [[Env]] containing the dynamic properties needed to evaluate
+ * calls to [[getPropertyValue]].
+ * @hidden
+ */
+function getDynamicPropertyEnv(envOrLevel: Env | number, pixelToMeters: number) {
+    if (typeof envOrLevel === "number") {
+        dynamicPropertiesCache.$zoom = envOrLevel;
+        dynamicPropertiesCache.$pixelToMeters = pixelToMeters;
+        return dynamicPropertiesEnv;
+    }
+    return envOrLevel;
+}
+
+/**
  * Get the value of the specified property at the given zoom level.
  *
  * @param property Property of a technique.
@@ -85,49 +115,85 @@ export function isInterpolatedProperty(p: any): p is InterpolatedProperty {
  * interpolation of `length` values).
  *
  */
-export function getPropertyValue<T>(
+export function getPropertyValue(
     property: Value | Expr | InterpolatedProperty | undefined,
     level: number,
+    pixelToMeters?: number
+): any;
+
+/**
+ * Get the value of the specified property.
+ *
+ * @param property Property of a technique.
+ * @param env The [[Env]] used to evaluate the property.
+ */
+export function getPropertyValue(
+    property: Value | Expr | InterpolatedProperty | undefined,
+    env: Env
+): any;
+
+export function getPropertyValue(
+    property: Value | Expr | InterpolatedProperty | undefined,
+    envOrLevel: Env | number,
     pixelToMeters: number = 1.0
 ): any {
-    if (isInterpolatedPropertyDefinition<T>(property)) {
+    if (isInterpolatedPropertyDefinition<any>(property)) {
         throw new Error("Cannot interpolate a InterpolatedPropertyDefinition.");
-    } else if (!isInterpolatedProperty(property)) {
-        if (typeof property !== "string") {
-            return property;
+    } else if (Expr.isExpr(property)) {
+        return property.evaluate(
+            getDynamicPropertyEnv(envOrLevel, pixelToMeters),
+            ExprScope.Dynamic
+        );
+    } else if (isInterpolatedProperty(property)) {
+        let $zoom: number;
+        let $pixelToMeters: number;
+        if (typeof envOrLevel === "number") {
+            $zoom = envOrLevel;
+            $pixelToMeters = pixelToMeters;
         } else {
-            const matchedFormat = StringEncodedNumeralFormats.find(format =>
-                format.regExp.test(property)
-            );
-            if (matchedFormat === undefined) {
-                return property;
+            $zoom = envOrLevel.lookup("$zoom") as number;
+            $pixelToMeters = envOrLevel.lookup("$pixelToMeters") as number;
+            if (typeof $pixelToMeters !== "number") {
+                $pixelToMeters = pixelToMeters;
             }
-            switch (matchedFormat.type) {
+        }
+        if (property._stringEncodedNumeralType !== undefined) {
+            switch (property._stringEncodedNumeralType) {
                 case StringEncodedNumeralType.Meters:
-                    return matchedFormat.decoder(property)[0];
                 case StringEncodedNumeralType.Pixels:
-                    return matchedFormat.decoder(property)[0] * pixelToMeters;
+                    return getInterpolatedLength(property, $zoom, $pixelToMeters);
                 case StringEncodedNumeralType.Hex:
                 case StringEncodedNumeralType.RGB:
                 case StringEncodedNumeralType.HSL:
-                    const hslValues = matchedFormat.decoder(property);
-                    return tmpColor.setHSL(hslValues[0], hslValues[1], hslValues[2]).getHex();
-                default:
-                    return matchedFormat.decoder(property)[0];
+                    return getInterpolatedColor(property, $zoom);
             }
         }
-    } else if (property._stringEncodedNumeralType !== undefined) {
-        switch (property._stringEncodedNumeralType) {
-            case StringEncodedNumeralType.Meters:
-            case StringEncodedNumeralType.Pixels:
-                return getInterpolatedLength(property, level, pixelToMeters);
-            case StringEncodedNumeralType.Hex:
-            case StringEncodedNumeralType.RGB:
-            case StringEncodedNumeralType.HSL:
-                return getInterpolatedColor(property, level);
-        }
+        return getInterpolatedLength(property, $zoom, $pixelToMeters);
     }
-    return getInterpolatedLength(property, level, pixelToMeters);
+
+    if (typeof property !== "string") {
+        return property;
+    }
+
+    const matchedFormat = StringEncodedNumeralFormats.find(format => format.regExp.test(property));
+
+    if (matchedFormat === undefined) {
+        return property;
+    }
+
+    switch (matchedFormat.type) {
+        case StringEncodedNumeralType.Meters:
+            return matchedFormat.decoder(property)[0];
+        case StringEncodedNumeralType.Pixels:
+            return matchedFormat.decoder(property)[0] * pixelToMeters;
+        case StringEncodedNumeralType.Hex:
+        case StringEncodedNumeralType.RGB:
+        case StringEncodedNumeralType.HSL:
+            const hslValues = matchedFormat.decoder(property);
+            return tmpColor.setHSL(hslValues[0], hslValues[1], hslValues[2]).getHex();
+        default:
+            return matchedFormat.decoder(property)[0];
+    } // switch
 }
 
 function getInterpolatedLength(

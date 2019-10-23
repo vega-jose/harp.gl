@@ -164,13 +164,22 @@ export enum ExprScope {
     /**
      * The scope of an [[Expr]] used in a [[Technique]] `when` condition.
      */
-    Condition
+    Condition,
+
+    /**
+     * The scope of an [[Expr]] used as dynamic property attribute value.
+     */
+    Dynamic
 }
 
 /**
  * Abstract class defining a shape of a [[Theme]]'s expression
  */
 export abstract class Expr {
+    static isExpr(expr: any): expr is Expr {
+        return expr instanceof Expr;
+    }
+
     /**
      * Creates an expression from the given `code`.
      *
@@ -502,6 +511,26 @@ export class VarExpr extends Expr {
 }
 
 export abstract class LiteralExpr extends Expr {
+    /**
+     * Create a [[LiteralExpr]] from the given value.
+     *
+     * @param value A constant value.
+     */
+    static fromValue(value: Value): Expr {
+        switch (typeof value) {
+            case "boolean":
+                return new BooleanLiteralExpr(value);
+            case "number":
+                return new NumberLiteralExpr(value);
+            case "string":
+                return new StringLiteralExpr(value);
+            case "object":
+                return value === null ? NullLiteralExpr.instance : new ObjectLiteralExpr(value);
+            default:
+                throw new Error(`failed to create a literal from '${value}'`);
+        } // switch
+    }
+
     abstract get value(): Value;
 }
 

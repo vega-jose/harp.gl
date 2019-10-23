@@ -14,6 +14,7 @@ import {
     ExprScope,
     ExprVisitor,
     HasAttributeExpr,
+    LiteralExpr,
     MatchExpr,
     NullLiteralExpr,
     NumberLiteralExpr,
@@ -62,6 +63,20 @@ export class ExprEvaluatorContext {
             return expr.accept(this.evaluator, this);
         }
         throw new Error("Failed to evaluate expression");
+    }
+
+    partiallyEvaluate(expr: Expr | undefined): Expr {
+        if (expr === undefined) {
+            throw new Error("Failed to evaluate expression");
+        }
+
+        const value = expr.accept(this.evaluator, this);
+
+        if (Expr.isExpr(value)) {
+            return value;
+        }
+
+        return LiteralExpr.fromValue(value);
     }
 }
 

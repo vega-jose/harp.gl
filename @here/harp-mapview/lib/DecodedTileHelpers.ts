@@ -18,6 +18,7 @@ import {
     TEXTURE_PROPERTY_KEYS,
     TextureProperties
 } from "@here/harp-datasource-protocol";
+import { Expr, isJsonExpr } from "@here/harp-datasource-protocol/lib/Expr";
 import {
     CirclePointsMaterial,
     DashedLineMaterial,
@@ -459,7 +460,15 @@ export function applyTechniqueToMaterial(
         if (typeof m[prop] === "undefined") {
             return;
         }
-        if (level !== undefined && isInterpolatedProperty(value)) {
+        if (isJsonExpr(value)) {
+            try {
+                value = Expr.fromJSON(value);
+                (technique as any)[prop] = value;
+            } catch (error) {
+                logger.error("#createMaterial: Failed to compile expression:", error);
+            }
+        }
+        if (level !== undefined && (isInterpolatedProperty(value) || Expr.isExpr(value))) {
             value = getPropertyValue(value, level);
         }
         if (m[prop] instanceof THREE.Color) {
