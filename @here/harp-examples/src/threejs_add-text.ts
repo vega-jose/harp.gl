@@ -5,9 +5,18 @@
  */
 
 import { GeoCoordinates } from "@here/harp-geoutils";
-import { MapAnchor, MapView } from "@here/harp-mapview";
+import {
+    MapAnchor,
+    MapView,
+    MapViewUtils,
+    MapViewEventNames,
+    RenderEvent
+} from "@here/harp-mapview";
 import * as THREE from "three";
 import { HelloWorldExample } from "./getting-started_hello-world_npm";
+
+import "three/examples/jsm/objects/Water";
+import { now } from "@tweenjs/tween.js";
 
 /**
  * This example builds on top of the [[ThreejsAddSimpleObject]], so please consult that first for
@@ -17,19 +26,45 @@ import { HelloWorldExample } from "./getting-started_hello-world_npm";
  *
  */
 export namespace ThreejsAddText {
-    // snippet:harp_gl_threejs_add_simple_object_0.ts
-    const scale = 100;
-    const geometry = new THREE.BoxGeometry(1 * scale, 1 * scale, 1 * scale);
-    const material = new THREE.MeshStandardMaterial({
-        color: 0x00ff00fe
-    });
-    function createPinkCube(): MapAnchor<THREE.Mesh> {
-        const mesh = new THREE.Mesh(geometry, material);
-        // Make sure the cube overlaps everything else, is completely arbitrary.
-        mesh.renderOrder = Number.MAX_SAFE_INTEGER;
-        return mesh;
+    interface Slide {
+        location: GeoCoordinates;
+        tilt: number;
+        azimuth: number;
+        distance: number;
     }
-    // end:harp_gl_threejs_add_simple_object_0.ts
+
+    const slides: Slide[] = [
+        // {
+        //     // Lisbon
+        //     location: new GeoCoordinates(38.7684705, -9.0942402),
+        //     tilt: 0,
+        //     azimuth: 0,
+        //     distance: 1000
+        // },
+
+        {
+            // HERE Berlin
+            location: new GeoCoordinates(52.5308419, 13.3850719),
+            tilt: 70,
+            azimuth: 0,
+            distance: 3000
+        },
+        {
+            // Museumsinsel Berlin
+            location: new GeoCoordinates(52.5169285, 13.4010829),
+            tilt: 45,
+            azimuth: 45,
+            distance: 300
+        },
+        {
+            location: new GeoCoordinates(52.5208543, 13.4094943),
+            tilt: 10,
+            azimuth: 0,
+            distance: 1000
+        }
+    ];
+
+    let currentSlide = 0;
 
     // Create a new MapView for the HTMLCanvasElement of the given id.
     function addTextGeometry(mapView: MapView) {
@@ -72,7 +107,7 @@ export namespace ThreejsAddText {
             });
 
             const anchor = new THREE.Object3D() as MapAnchor<THREE.Object3D>;
-            anchor.geoPosition = new GeoCoordinates(40.69855966, -74.0139806);
+            anchor.geoPosition = slides[0].location;
 
             const logoMesh = new THREE.Mesh(logoGeometry, logoMaterial);
             logoMesh.name = "harp.gl_text";
@@ -103,4 +138,136 @@ export namespace ThreejsAddText {
     document.body.appendChild(message);
 
     addTextGeometry(HelloWorldExample.mapView);
+
+    function setLocation(
+        mapView: MapView,
+        target: GeoCoordinates,
+        tilt: number,
+        azimuth: number,
+        distance: number
+    ) {
+        MapViewUtils.getCameraPositionFromTargetCoordinates(
+            target,
+            distance,
+            0,
+            0,
+            mapView.projection,
+            mapView.camera.position
+        );
+
+        MapViewUtils.getCameraRotation(
+            mapView.projection,
+            target,
+            azimuth,
+            tilt,
+            mapView.camera.quaternion
+        );
+    }
+
+    function startTransition(
+        mapView: MapView,
+        target: GeoCoordinates,
+        tilt: number,
+        azimuth: number,
+        distance: number
+    ) {
+        const startPosition = mapView.camera.position.clone();
+        const startQuaternion = mapView.camera.quaternion.clone();
+        const targetPosition = MapViewUtils.getCameraPositionFromTargetCoordinates(
+            target,
+            distance,
+            azimuth,
+            tilt,
+            mapView.projection
+        );
+
+        const targetQuaternion = MapViewUtils.getCameraRotation(
+            mapView.projection,
+            target,
+            azimuth,
+            tilt
+        );
+
+        const startTime = Date.now();
+
+        const middlePosition = startPosition
+            .clone()
+            .add(targetPosition)
+            .multiplyScalar(0.5);
+        middlePosition.setZ(
+            startPosition
+                .clone()
+                .sub(targetPosition)
+                .length()
+        );
+        // const curve = new THREE.QuadraticBezierCurve3(
+        //     startPosition,
+        //     middlePosition,
+        //     targetPosition
+        // );
+        const curve = new THREE.CatmullRomCurve3([startPosition, middlePosition, targetPosition]);
+
+        const updateListener = () => {
+            const time = Date.now();
+            let t = (time - startTime) / 1000;
+
+            if (t >= 1) {
+                t = 1;
+                mapView.endAnimation();
+                mapView.removeEventListener(MapViewEventNames.Render, updateListener);
+            }
+            mapView.camera.position.copy(curve.getPoint(t));
+            const rotation = startQuaternion.clone().slerp(targetQuaternion, t);
+            mapView.camera.quaternion.copy(rotation);
+            mapView.camera.updateMatrixWorld(true);
+        };
+
+        mapView.addEventListener(MapViewEventNames.Render, updateListener);
+        mapView.beginAnimation();
+        mapView.update();
+    }
+
+    startTransition(
+        HelloWorldExample.mapView,
+        slides[0].location,
+        slides[0].tilt,
+        slides[0].azimuth,
+        slides[0].distance
+    );
+    // (
+    //         HelloWorldExample.mapView,
+    //         slides[0].location,
+    //         slides[0].tilt,
+    //         slides[0].azimuth,
+    //         slides[0].distance
+    //     );
+    window.onkeydown = (ev: KeyboardEvent) => {
+        const oldSlide = slides[currentSlide];
+        switch (ev.code) {
+            case "ArrowLeft":
+                currentSlide--;
+                break;
+            case "ArrowRight":
+                currentSlide++;
+                break;
+        }
+        if (currentSlide < 0) {
+            currentSlide = 0;
+        } else if (currentSlide >= slides.length) {
+            currentSlide = slides.length - 1;
+        }
+
+        const newSlide = slides[currentSlide];
+        if (oldSlide === newSlide) {
+            return;
+        }
+
+        startTransition(
+            HelloWorldExample.mapView,
+            newSlide.location,
+            newSlide.tilt,
+            newSlide.azimuth,
+            newSlide.distance
+        );
+    };
 }

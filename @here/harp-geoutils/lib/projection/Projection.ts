@@ -90,6 +90,7 @@ export abstract class Projection {
         MathUtils.newVector3(1, 0, 0, result.xAxis);
         MathUtils.newVector3(0, 1, 0, result.yAxis);
         MathUtils.newVector3(0, 0, 1, result.zAxis);
+
         return result;
     }
 
