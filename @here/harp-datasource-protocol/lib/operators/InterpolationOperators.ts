@@ -70,6 +70,23 @@ type StepExpr = CallExpr & {
 };
 
 const operators = {
+    ppi: {
+        call: (context: ExprEvaluatorContext, call: CallExpr) => {
+            return 140;
+        }
+    },
+    "to-world-discrete": {
+        call: (context: ExprEvaluatorContext, call: CallExpr) => {
+            const value = Math.floor(context.evaluate(call.args[0]) as number);
+            return `${value}px`;
+        }
+    },
+    "to-world": {
+        call: (context: ExprEvaluatorContext, call: CallExpr) => {
+            const value = context.evaluate(call.args[0]);
+            return `${value}px`;
+        }
+    },
     zoom: {
         call: (context: ExprEvaluatorContext, _: CallExpr): Value => {
             switch (context.scope) {
