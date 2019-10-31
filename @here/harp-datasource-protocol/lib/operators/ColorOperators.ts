@@ -12,6 +12,12 @@ import { ExprEvaluatorContext, OperatorDescriptorMap } from "../ExprEvaluator";
 
 const tmpColor = new THREE.Color();
 const operators = {
+    getalpha: {
+        call: (context: ExprEvaluatorContext, call: CallExpr) => {
+            const value = context.evaluate(call.args[0]);
+            return tmpColor.set(value as any).getHex() === 0 ? 0 : 1;
+        }
+    },
     rgb: {
         call: (context: ExprEvaluatorContext, call: CallExpr) => {
             const r = context.evaluate(call.args[0]);
