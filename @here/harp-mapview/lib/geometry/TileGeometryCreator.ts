@@ -685,7 +685,7 @@ export class TileGeometryCreator {
                     lineMaterial.uniforms.opacity.value = material.opacity;
 
                     if (
-                        technique.clipping !== false &&
+                        technique.clipping === true &&
                         tile.projection.type === ProjectionType.Planar
                     ) {
                         const tileSize = lineMaterial.uniforms.tileSize;
