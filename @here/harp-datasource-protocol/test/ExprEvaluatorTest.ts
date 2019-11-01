@@ -304,6 +304,15 @@ describe("ExprEvaluator", function() {
         });
     });
 
+    describe("Operator 'color'", function() {
+        it("evaluate", function() {
+            assert.strictEqual(evaluate(["color", "#00ff00", "#ff0000"]), "#00ff00");
+            assert.strictEqual(evaluate(["color", 123, "y"]), 123);
+            assert.strictEqual(evaluate(["color", "blue", "xyz"]), "blue");
+            assert.strictEqual(evaluate(["color", "invalid color", "red"]), "red");
+        });
+    });
+
     describe("Operator 'typeof'", function() {
         it("evaluate", function() {
             assert.strictEqual(evaluate(["typeof", "x"]), "string");

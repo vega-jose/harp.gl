@@ -165,6 +165,18 @@
                 "lineWidth": ["ref", "countryBorderOutlineWidth"]
             },
             "renderOrder": 4
+        },
+        "trainLines": {
+            "description": "Train lines",
+            "layer": "transit",
+            "when": ["all", ["==", ["get", "kind"], "train"]],
+            "technique": "none"
+        },
+        "trainLabels": {
+            "description": "Train line labels",
+            "layer": "transit",
+            "when": ["all", ["==", ["get", "kind"], "train"]],
+            "technique": "none"
         }
     },
     "sky": {
@@ -2594,7 +2606,9 @@
                     "fadeFar": 1
                 },
                 "renderOrder": 100
-            }
+            },
+            ["ref", "trainLines"],
+            ["ref", "trainLabels"]
         ]
     }
 }

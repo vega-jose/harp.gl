@@ -906,6 +906,7 @@ export interface SolidLineTechniqueParams extends BaseTechniqueParams, Polygonal
     outlineWidth?: DynamicProperty<StyleLength>;
     /**
      * Clip the line outside the tile if `true`.
+     * @default false
      */
     clipping?: boolean;
     /**

@@ -1,4 +1,18 @@
 {
+    "definitions": {
+        "trainLines": {
+            "description": "Train lines",
+            "layer": "transit",
+            "when": ["all", ["==", ["get", "kind"], "train"]],
+            "technique": "none"
+        },
+        "trainLabels": {
+            "description": "Train line labels",
+            "layer": "transit",
+            "when": ["all", ["==", ["get", "kind"], "train"]],
+            "technique": "none"
+        }
+    },
     "sky": {
         "type": "gradient",
         "topColor": "#AAA69A",
@@ -2140,7 +2154,9 @@
                     "fadeFar": 1
                 },
                 "renderOrder": 100
-            }
+            },
+            ["ref", "trainLines"],
+            ["ref", "trainLabels"]
         ]
     }
 }

@@ -2,10 +2,7 @@
     "name": "harp.gl",
     "version": "1.0.0",
     "description": "Core render components of harp.gl, an open-source 3D map rendering engine.",
-    "workspaces": [
-        "@here/*",
-        "test/performance"
-    ],
+    "workspaces": ["@here/*", "test/performance"],
     "devDependencies": {
         "@strictsoftware/typedoc-plugin-monorepo": "^0.2.1",
         "@types/chai": "^4.2.2",
@@ -36,7 +33,7 @@
     "scripts": {
         "pre-test": "yarn run code-pre-tests --forbid-only && yarn run prettier && yarn run tslint",
         "code-pre-tests": "ts-mocha --no-timeouts ./test/*.ts",
-        "test": "ts-mocha ./@here/*/test/*.ts",
+        "test": "ts-mocha ./@here/harp-datasource-protocol/test/ExprEvaluatorTest.ts",
         "performance-test-node": "ts-mocha ./test/performance/**/*.ts",
         "cov-test": "nyc mocha -r ts-node/register ./@here/*/test/*.ts",
         "cov-report-html": "nyc report --reporter=html",

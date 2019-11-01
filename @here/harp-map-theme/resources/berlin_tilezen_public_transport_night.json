@@ -1,0 +1,44 @@
+{
+    "extends": "berlin_tilezen_night_reduced.json",
+    "definitions": {
+        "trainLines": {
+            "description": "Train lines",
+            "layer": "transit",
+            "when": ["all", ["==", ["get", "kind"], "train"]],
+            "technique": "solid-line",
+            "attr": {
+                "clipping": false,
+                "color": ["case", ["has", "colour"], ["downcase", ["get", "colour"]], "#0000aa"],
+                "lineWidth": [
+                    "interpolate",
+                    ["linear"],
+                    ["zoom"],
+                    0,
+                    "1px",
+                    10,
+                    "2px",
+                    14,
+                    "4px",
+                    20,
+                    "10px"
+                ],
+                "renderOrder": ["get", "sort_rank"]
+            }
+        },
+        "trainLabels": {
+            "description": "Train line labels",
+            "layer": "transit",
+            "when": ["all", ["==", ["get", "kind"], "train"]],
+            "technique": "text",
+            "attr": {
+                "color": "#000000",
+                "backgroundColor": "#FFFFFF",
+                "backgroundOpacity": 0.5,
+                "size": 16,
+                "priority": 14,
+                "fadeNear": 0.8,
+                "fadeFar": 0.9
+            }
+        }
+    }
+}
