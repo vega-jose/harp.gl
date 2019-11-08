@@ -17,7 +17,7 @@ import { assert, expect } from "chai";
 import * as sinon from "sinon";
 import * as THREE from "three";
 
-import { GeoCoordinates } from "@here/harp-geoutils";
+import { GeoCoordinates, sphereProjection } from "@here/harp-geoutils";
 import * as TestUtils from "@here/harp-test-utils/lib/WebGLStub";
 import { MapView, MapViewEventNames } from "../lib/MapView";
 import { MapViewFog } from "../lib/MapViewFog";
@@ -332,5 +332,100 @@ describe("MapView", function() {
         await waitForEvent(mapView, MapViewEventNames.AfterRender);
 
         expect(updateStorageOffsetSpy.called);
+    });
+
+    it("set position: lookAt, tilt, azimuth", async function() {
+        const customCanvas = {
+            clientWidth: 600,
+            clientHeight: 800,
+            addEventListener: sinon.stub(),
+            removeEventListener: sinon.stub()
+        };
+
+        mapView = new MapView({
+            canvas: (customCanvas as any) as HTMLCanvasElement
+        });
+
+        const center = new GeoCoordinates(52.518221, 13.376075);
+
+        mapView.lookAt(center, 500, 0, 0);
+        expect(mapView.lookAtDistance).to.be.closeTo(500, 0.00001);
+        expect(mapView.target.lat).to.be.closeTo(center.lat, 0.00001);
+        expect(mapView.target.lng).to.be.closeTo(center.lng, 0.00001);
+        expect(mapView.tilt % 360).to.be.closeTo(0.0, 0.00001);
+        expect(mapView.azimuth % 360).to.be.closeTo(0.0, 0.00001);
+
+        mapView.lookAt(center, 500, 45, 45);
+        expect(mapView.lookAtDistance).to.be.closeTo(500, 0.00001);
+        expect(mapView.target.lat).to.be.closeTo(center.lat, 0.00001);
+        expect(mapView.target.lng).to.be.closeTo(center.lng, 0.00001);
+        expect(mapView.tilt % 360).to.be.closeTo(45, 0.00001);
+        expect(mapView.azimuth % 360).to.be.closeTo(45, 0.00001);
+
+        mapView.lookAt(center, 500, -10, 200);
+        expect(mapView.lookAtDistance).to.be.closeTo(500, 0.00001);
+        expect(mapView.target.lat).to.be.closeTo(center.lat, 0.00001);
+        expect(mapView.target.lng).to.be.closeTo(center.lng, 0.00001);
+        expect(mapView.tilt % 360).to.be.closeTo(0, 0.00001);
+        expect(mapView.azimuth % 360).to.be.closeTo(200, 0.00001);
+
+        mapView.lookAt(center, 500, 0, 0);
+        mapView.tilt = 15;
+        mapView.azimuth = 90;
+        mapView.lookAtDistance = 1000;
+
+        expect(mapView.target.lat).to.be.closeTo(center.lat, 0.00001);
+        expect(mapView.target.lng).to.be.closeTo(center.lng, 0.00001);
+        expect(mapView.lookAtDistance).to.be.closeTo(1000, 0.00001);
+        expect(mapView.tilt % 360).to.be.closeTo(15, 0.00001);
+        expect(mapView.azimuth % 360).to.be.closeTo(90, 0.00001);
+    });
+
+    it("set position in sphere projection: lookAt, tilt, azimuth", async function() {
+        const customCanvas = {
+            clientWidth: 600,
+            clientHeight: 800,
+            addEventListener: sinon.stub(),
+            removeEventListener: sinon.stub()
+        };
+
+        mapView = new MapView({
+            canvas: (customCanvas as any) as HTMLCanvasElement,
+            projection: sphereProjection
+        });
+
+        const center = new GeoCoordinates(52.518221, 13.376075);
+
+        mapView.lookAt(center, 500, 0, 0);
+        expect(mapView.lookAtDistance).to.be.closeTo(500, 0.00001);
+        expect(mapView.target.lat).to.be.closeTo(center.lat, 0.00001);
+        expect(mapView.target.lng).to.be.closeTo(center.lng, 0.00001);
+        expect(mapView.tilt % 360).to.be.closeTo(0.0, 0.00001);
+        expect(mapView.azimuth % 360).to.be.closeTo(0.0, 0.00001);
+
+        mapView.lookAt(center, 500, 10, 45);
+        expect(mapView.lookAtDistance).to.be.closeTo(500, 0.00001);
+        expect(mapView.target.lat).to.be.closeTo(center.lat, 0.00001);
+        expect(mapView.target.lng).to.be.closeTo(center.lng, 0.00001);
+        expect(mapView.tilt % 360).to.be.closeTo(10, 0.00001);
+        expect(mapView.azimuth % 360).to.be.closeTo(45, 0.00001);
+
+        mapView.lookAt(center, 500, -10, 200);
+        expect(mapView.lookAtDistance).to.be.closeTo(500, 0.00001);
+        expect(mapView.target.lat).to.be.closeTo(center.lat, 0.00001);
+        expect(mapView.target.lng).to.be.closeTo(center.lng, 0.00001);
+        expect(mapView.tilt % 360).to.be.closeTo(0, 0.00001);
+        expect(mapView.azimuth % 360).to.be.closeTo(200, 0.00001);
+
+        mapView.lookAt(center, 500, 0, 0);
+        mapView.tilt = 10;
+        mapView.azimuth = 90;
+        mapView.lookAtDistance = 1000;
+
+        expect(mapView.target.lat).to.be.closeTo(center.lat, 0.00001);
+        expect(mapView.target.lng).to.be.closeTo(center.lng, 0.00001);
+        expect(mapView.lookAtDistance).to.be.closeTo(1000, 0.01);
+        expect(mapView.tilt % 360).to.be.closeTo(10, 0.001);
+        expect(mapView.azimuth % 360).to.be.closeTo(90, 0.00001);
     });
 });

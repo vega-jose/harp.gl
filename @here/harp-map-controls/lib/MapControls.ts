@@ -903,7 +903,7 @@ export class MapControls extends THREE.EventDispatcher {
 
     private updateMapView() {
         this.dispatchEvent(MAPCONTROL_EVENT);
-        this.mapView.update();
+        this.mapView.updateCamera();
     }
 
     private mouseDoubleClick(e: MouseEvent) {

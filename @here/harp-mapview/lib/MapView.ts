@@ -170,6 +170,8 @@ const TERRAIN_ZOOM_LEVEL = 4;
  */
 const DEFAULT_POLAR_STYLE_SET_NAME = "polar";
 
+const MAX_PITCH = 89;
+
 /**
  * The type of `RenderEvent`.
  */
@@ -632,10 +634,11 @@ export class MapView extends THREE.EventDispatcher {
 
     private m_tileWrappingEnabled: boolean = true;
 
-    private m_zoomLevel: number = DEFAULT_MIN_ZOOM_LEVEL;
     private m_minZoomLevel: number = DEFAULT_MIN_ZOOM_LEVEL;
     private m_maxZoomLevel: number = DEFAULT_MAX_ZOOM_LEVEL;
     private m_minCameraHeight: number = DEFAULT_MIN_CAMERA_HEIGHT;
+    private m_target = new GeoCoordinates(0.0, 0.0);
+    private m_lookAtDistance: number = 0.0;
 
     private readonly m_screenCamera = new THREE.OrthographicCamera(-1, 1, 1, -1);
 
@@ -650,7 +653,6 @@ export class MapView extends THREE.EventDispatcher {
     private readonly m_rteCamera = new THREE.PerspectiveCamera();
 
     private m_focalLength: number;
-    private m_lookAtDistance: number;
     private readonly m_viewRanges: ViewRanges = {
         near: DEFAULT_CAM_NEAR_PLANE,
         far: DEFAULT_CAM_FAR_PLANE,
@@ -830,7 +832,7 @@ export class MapView extends THREE.EventDispatcher {
             this.m_screenCollisions = new ScreenCollisionsDebug(this.m_collisionDebugCanvas);
         }
 
-        this.handleRequestAnimationFrame = this.renderFunc.bind(this);
+        this.handleRequestAnimationFrame = this.render.bind(this);
         this.handlePostponedAnimationFrame = this.postponedAnimationFrame.bind(this);
         this.m_pickHandler = new PickHandler(
             this,
@@ -892,7 +894,6 @@ export class MapView extends THREE.EventDispatcher {
             DEFAULT_CAM_FAR_PLANE
         );
         this.m_camera.up.set(0, 0, 1);
-        this.m_lookAtDistance = 0;
         this.m_focalLength = 0;
         this.m_scene.add(this.m_camera); // ensure the camera is added to the scene.
         this.m_screenProjector = new ScreenProjector(this.m_camera);
@@ -1473,6 +1474,23 @@ export class MapView extends THREE.EventDispatcher {
     }
 
     /**
+     * Set distance from camera to the point of focus in world units.
+     */
+    set lookAtDistance(distance: number) {
+        const sphericalCoordinates = MapViewUtils.extractSphericalCoordinatesFromLocation(
+            this,
+            this.m_camera,
+            this.target
+        );
+        this.lookAt(
+            this.target,
+            distance,
+            THREE.Math.radToDeg(sphericalCoordinates.tilt),
+            THREE.Math.radToDeg(-sphericalCoordinates.azimuth)
+        );
+    }
+
+    /**
      * Get object describing frustum planes distances and min/max visibility range for actual
      * camera setup.
      * Near and far plane distance are self explanatory while minimum and maximum visibility range
@@ -1511,7 +1529,69 @@ export class MapView extends THREE.EventDispatcher {
             );
         }
 
-        this.update();
+        this.updateCamera();
+    }
+
+    /**
+     * Returns the camera focus point position in geo-coordinates. If the camera points to an
+     * invalid position will return `null`.
+     */
+    get target() {
+        return this.m_target;
+    }
+
+    set target(target: GeoCoordinates) {
+        const sphericalCoordinates = MapViewUtils.extractSphericalCoordinatesFromLocation(
+            this,
+            this.m_camera,
+            this.target
+        );
+
+        this.lookAt(
+            target,
+            this.lookAtDistance,
+            THREE.Math.radToDeg(sphericalCoordinates.tilt),
+            THREE.Math.radToDeg(sphericalCoordinates.azimuth)
+        );
+    }
+
+    /**
+     * Return `tilt` value of the current view in degrees.
+     */
+    get tilt(): number {
+        const sphericalCoordinates = MapViewUtils.extractSphericalCoordinatesFromLocation(
+            this,
+            this.m_camera,
+            this.target
+        );
+        return THREE.Math.radToDeg(sphericalCoordinates.tilt);
+    }
+
+    /**
+     * Set `tilt` property of the [[MapView]] in degrees.
+     */
+    set tilt(tiltDeg: number) {
+        this.lookAt(this.target, this.lookAtDistance, tiltDeg, this.azimuth);
+    }
+
+    /**
+     * Return `azimuth` value of the current view in degrees.
+     */
+    get azimuth(): number {
+        const sphericalCoordinates = MapViewUtils.extractSphericalCoordinatesFromLocation(
+            this,
+            this.m_camera,
+            this.target
+        );
+        return THREE.Math.radToDeg(sphericalCoordinates.azimuth + Math.PI);
+    }
+
+    /**
+     * Set `azimuth` property of the [[MapView]] in degrees. Please note [[MapView.target]] must
+     * be not `null`
+     */
+    set azimuth(azimuthDeg: number) {
+        this.lookAt(this.target, this.lookAtDistance, this.tilt, azimuthDeg);
     }
 
     /**
@@ -1609,12 +1689,16 @@ export class MapView extends THREE.EventDispatcher {
      * Returns the zoom level for the given camera setup.
      */
     get zoomLevel(): number {
-        return this.m_zoomLevel;
+        const cameraPitch = MapViewUtils.extractAttitude(this, this.m_camera).pitch;
+        const cameraPosZ = this.getCameraHeightAboveTerrain(TERRAIN_ZOOM_LEVEL);
+
+        const zoomLevelDistance = cameraPosZ / Math.cos(Math.min(cameraPitch, Math.PI / 3));
+        return MapViewUtils.calculateZoomLevelFromDistance(zoomLevelDistance, this);
     }
+
     set zoomLevel(zoomLevel: number) {
-        this.m_zoomLevel = THREE.Math.clamp(zoomLevel, this.m_minZoomLevel, this.m_maxZoomLevel);
-        MapViewUtils.zoomOnTargetPosition(this, 0, 0, this.m_zoomLevel);
-        this.update();
+        THREE.Math.clamp(zoomLevel, this.m_minZoomLevel, this.m_maxZoomLevel);
+        this.lookAtDistance = MapViewUtils.calculateDistanceToGroundFromZoomLevel(this, zoomLevel);
     }
 
     /**
@@ -1622,11 +1706,7 @@ export class MapView extends THREE.EventDispatcher {
      * Actual storage level of the rendered data also depends on [[DataSource.storageLevelOffset]].
      */
     get storageLevel(): number {
-        return THREE.Math.clamp(
-            Math.floor(this.m_zoomLevel),
-            this.m_minZoomLevel,
-            this.m_maxZoomLevel
-        );
+        return this.zoomLevel;
     }
 
     /**
@@ -1839,7 +1919,7 @@ export class MapView extends THREE.EventDispatcher {
         tiltDeg: number = 0,
         azimuthDeg: number = 0
     ): void {
-        const limitedTilt = Math.min(89, tiltDeg);
+        const limitedTilt = this.limitPitch(tiltDeg);
         // MapViewUtils#setRotation uses pitch, not tilt, which is different in sphere projection.
         // But in sphere, in the tangent space of the target of the camera, pitch = tilt. So, put
         // the camera on the target, so the tilt can be passed to getRotation as a pitch.
@@ -1858,7 +1938,15 @@ export class MapView extends THREE.EventDispatcher {
             this.projection,
             this.camera.position
         );
+
+        this.m_target = target;
+        this.m_lookAtDistance = this.camera.position
+            .clone()
+            .sub(this.projection.projectPoint(target))
+            .length();
+
         this.camera.updateMatrixWorld(true);
+        this.update();
     }
 
     /**
@@ -1880,18 +1968,11 @@ export class MapView extends THREE.EventDispatcher {
         pitchDeg: number = 0
     ): void {
         this.geoCenter = geoPos;
-        let limitedPitch = Math.min(89, pitchDeg); // 90 leads to imprecision issues.
-        if (this.projection.type === ProjectionType.Spherical) {
-            const maxPitchRadWithCurvature = Math.asin(
-                EarthConstants.EQUATORIAL_RADIUS /
-                    (MapViewUtils.calculateDistanceToGroundFromZoomLevel(this, zoomLevel) +
-                        EarthConstants.EQUATORIAL_RADIUS)
-            );
-            const maxPitchDegWithCurvature = THREE.Math.radToDeg(maxPitchRadWithCurvature);
-            limitedPitch = Math.min(limitedPitch, maxPitchDegWithCurvature);
-        }
+        const limitedPitch = this.limitPitch(pitchDeg, zoomLevel);
         MapViewUtils.zoomOnTargetPosition(this, 0, 0, zoomLevel);
         MapViewUtils.setRotation(this, yawDeg, limitedPitch);
+        this.m_camera.updateMatrixWorld(true);
+        this.updateCamera();
         this.update();
     }
 
@@ -1963,8 +2044,7 @@ export class MapView extends THREE.EventDispatcher {
             // formulas are all equivalent:
             // lookAtDistance = (EQUATORIAL_CIRCUMFERENCE * focalLength) / (256 * zoomLevel^2);
             // lookAtDistance = abs(cameraPos.z) / cos(cameraPitch);
-            // Here we may use precalculated distance (once pre frame):
-            const lookAtDistance = this.m_lookAtDistance;
+            const lookAtDistance = this.lookAtDistance;
 
             // Find world space object size that corresponds to one pixel on screen.
             this.m_pixelToWorld = MapViewUtils.calculateWorldSizeByFocalLength(
@@ -2177,7 +2257,7 @@ export class MapView extends THREE.EventDispatcher {
      * in the [[MapViewOptions]]
      */
     renderSync() {
-        this.renderFunc(PerformanceTimer.now());
+        this.render(PerformanceTimer.now());
     }
 
     /**
@@ -2197,6 +2277,26 @@ export class MapView extends THREE.EventDispatcher {
         } // nothing to do
 
         this.drawFrame();
+    }
+
+    /**
+     * Need to be called if the [[MapView.camera]] position, rotation, quaternion properties are
+     * changed manually.
+     */
+    updateCamera() {
+        this.camera.updateMatrixWorld(true);
+        let target = MapViewUtils.rayCastWorldCoordinates(this, 0, 0);
+
+        if (target === null) {
+            target = new THREE.Vector3(0.0, 0.0, 1.0);
+            target.applyMatrix4(this.camera.matrixWorld).multiplyScalar(this.m_lookAtDistance);
+            this.m_target = this.projection.unprojectPoint(target);
+        } else {
+            this.m_target = this.projection.unprojectPoint(target);
+            this.m_lookAtDistance = target.sub(this.m_camera.position).length();
+        }
+
+        this.update();
     }
 
     /**
@@ -2431,17 +2531,7 @@ export class MapView extends THREE.EventDispatcher {
         this.m_screenCollisions.update(width, height);
 
         this.m_pixelToWorld = undefined;
-
-        const cameraPitch = MapViewUtils.extractAttitude(this, this.m_camera).pitch;
-        const cameraPosZ = this.getCameraHeightAboveTerrain(TERRAIN_ZOOM_LEVEL);
-
-        const target = MapViewUtils.rayCastWorldCoordinates(this, 0, 0);
-        if (target !== null) {
-            this.m_lookAtDistance = target.sub(this.camera.position).length();
-            const zoomLevelDistance = cameraPosZ / Math.cos(Math.min(cameraPitch, Math.PI / 3));
-            this.m_zoomLevel = MapViewUtils.calculateZoomLevelFromDistance(zoomLevelDistance, this);
-            this.m_fog.update(this, this.m_viewRanges.maximum);
-        }
+        this.m_fog.update(this, this.m_viewRanges.maximum);
     }
 
     /**
@@ -2536,13 +2626,6 @@ export class MapView extends THREE.EventDispatcher {
                 ? this.handleRequestAnimationFrame
                 : this.handlePostponedAnimationFrame
         );
-    }
-
-    /**
-     * Draw a new frame.
-     */
-    private renderFunc(time: number) {
-        this.render(time);
     }
 
     /**
@@ -2687,7 +2770,7 @@ export class MapView extends THREE.EventDispatcher {
             childObject.position.sub(this.camera.position);
         });
 
-        this.m_animatedExtrusionHandler.zoom = this.m_zoomLevel;
+        this.m_animatedExtrusionHandler.zoom = this.zoomLevel;
 
         if (currentFrameEvent !== undefined) {
             // Make sure the counters all have a value.
@@ -2901,8 +2984,6 @@ export class MapView extends THREE.EventDispatcher {
         if (this.projection.type === ProjectionType.Spherical) {
             this.m_camera.lookAt(this.scene.position);
         }
-
-        this.m_lookAtDistance = defaultGeoCenter.altitude!;
 
         this.calculateFocalLength(height);
 
@@ -3283,5 +3364,20 @@ export class MapView extends THREE.EventDispatcher {
         } else {
             return { width: clientWidth, height: clientHeight };
         }
+    }
+
+    private limitPitch(pitchDeg: number, zoomLevel = this.zoomLevel) {
+        // 90 leads to imprecision issues.
+        let limitedPitch = Math.max(Math.min(MAX_PITCH, pitchDeg), 0);
+        if (this.projection.type === ProjectionType.Spherical) {
+            const maxPitchRadWithCurvature = Math.asin(
+                EarthConstants.EQUATORIAL_RADIUS /
+                    (MapViewUtils.calculateDistanceToGroundFromZoomLevel(this, zoomLevel) +
+                        EarthConstants.EQUATORIAL_RADIUS)
+            );
+            const maxPitchDegWithCurvature = THREE.Math.radToDeg(maxPitchRadWithCurvature);
+            limitedPitch = Math.min(limitedPitch, maxPitchDegWithCurvature);
+        }
+        return limitedPitch;
     }
 }
