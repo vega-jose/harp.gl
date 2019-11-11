@@ -1,6 +1,5 @@
 [
-{ "date": "05-11-19","hash": "ce42b2c"},
-
+    { "date": "05-11-19", "hash": "ce42b2c", "version": "0.11.0" },
     { "date": "16-10-19", "hash": "4ef4a12", "version": "0.11.0-alpha.0" },
     { "date": "23-08-19", "hash": "0ab55c3", "version": "0.10.0" },
     { "date": "26-07-19", "hash": "0c2857f", "version": "0.9.4" },
