@@ -17,7 +17,14 @@ import { assert, expect } from "chai";
 import * as sinon from "sinon";
 import * as THREE from "three";
 
-import { GeoCoordinates } from "@here/harp-geoutils";
+import {
+    GeoCoordinates,
+    GeoCoordinatesLike,
+    GeoPointLike,
+    LatLngLike,
+    MathUtils,
+    sphereProjection
+} from "@here/harp-geoutils";
 import * as TestUtils from "@here/harp-test-utils/lib/WebGLStub";
 import { MapView, MapViewEventNames } from "../lib/MapView";
 import { MapViewFog } from "../lib/MapViewFog";
@@ -99,6 +106,106 @@ describe("MapView", function() {
         expect(rotationSpy.calledWith(mapView, 10, 20)).to.be.true;
         expect(mapView.geoCenter.latitude).to.be.closeTo(coords.latitude, 0.000000000001);
         expect(mapView.geoCenter.longitude).to.be.closeTo(coords.longitude, 0.000000000001);
+    });
+
+    it("Correctly sets geolocation and zoom from options in constructor", function() {
+        mapView = new MapView({
+            canvas,
+            target: new GeoCoordinates(52.5145, 13.3501),
+            zoomLevel: 18,
+            tilt: 10,
+            azimuth: 20
+        });
+
+        expect(mapView.zoomLevel).to.equal(18);
+        expect(mapView.geoCenter.latitude).to.equal(52.514280462360155);
+        expect(mapView.geoCenter.longitude).to.equal(13.349968698429997);
+        const attitude = MapViewUtils.extractAttitude(mapView, mapView.camera);
+        // Account for floating point imprecision
+        expect(MathUtils.radToDeg(attitude.yaw)).to.be.closeTo(-20, 1e-13);
+        expect(MathUtils.radToDeg(attitude.pitch)).to.be.closeTo(10, 1e-13);
+    });
+
+    // tslint:disable-next-line: max-line-length
+    it("Correctly sets geolocation and zoom from options in constructor with sphere projection", function() {
+        mapView = new MapView({
+            canvas,
+            projection: sphereProjection,
+            target: new GeoCoordinates(52.5145, 13.3501),
+            zoomLevel: 18,
+            tilt: 10,
+            azimuth: 20
+        });
+
+        expect(mapView.zoomLevel).to.equal(18);
+        expect(mapView.geoCenter.latitude).to.equal(52.514139257062084);
+        expect(mapView.geoCenter.longitude).to.equal(13.349884247394403);
+        const attitude = MapViewUtils.extractAttitude(mapView, mapView.camera);
+        // TODO: For sphere projection the result is off by quite a bit.
+        // Are these only floating-point issues?
+        expect(MathUtils.radToDeg(attitude.yaw)).to.be.closeTo(-20, 1e-3);
+        expect(MathUtils.radToDeg(attitude.pitch)).to.be.closeTo(10, 1e-3);
+    });
+
+    it("Correctly sets geolocation with GeoPointLike as parameter in constructor", function() {
+        mapView = new MapView({
+            canvas,
+            target: [13.3501, 52.5145],
+            zoomLevel: 18,
+            tilt: 10,
+            azimuth: 20
+        });
+
+        expect(mapView.zoomLevel).to.equal(18);
+        expect(mapView.geoCenter.latitude).to.equal(52.514280462360155);
+        expect(mapView.geoCenter.longitude).to.equal(13.349968698429997);
+        const attitude = MapViewUtils.extractAttitude(mapView, mapView.camera);
+        // Account for floating point imprecision
+        expect(MathUtils.radToDeg(attitude.yaw)).to.be.closeTo(-20, 1e-13);
+        expect(MathUtils.radToDeg(attitude.pitch)).to.be.closeTo(10, 1e-13);
+    });
+
+    // tslint:disable-next-line: max-line-length
+    it("Correctly sets geolocation with GeoCoordinatesLike as parameter in constructor", function() {
+        mapView = new MapView({
+            canvas,
+            target: {
+                latitude: 52.5145,
+                longitude: 13.3501
+            },
+            zoomLevel: 18,
+            tilt: 10,
+            azimuth: 20
+        });
+
+        expect(mapView.zoomLevel).to.equal(18);
+        expect(mapView.geoCenter.latitude).to.equal(52.514280462360155);
+        expect(mapView.geoCenter.longitude).to.equal(13.349968698429997);
+        const attitude = MapViewUtils.extractAttitude(mapView, mapView.camera);
+        // Account for floating point imprecision
+        expect(MathUtils.radToDeg(attitude.yaw)).to.be.closeTo(-20, 1e-13);
+        expect(MathUtils.radToDeg(attitude.pitch)).to.be.closeTo(10, 1e-13);
+    });
+
+    it("Correctly sets geolocation with LatLngLike as parameter in constructor", function() {
+        mapView = new MapView({
+            canvas,
+            target: {
+                lat: 52.5145,
+                lng: 13.3501
+            },
+            zoomLevel: 18,
+            tilt: 10,
+            azimuth: 20
+        });
+
+        expect(mapView.zoomLevel).to.equal(18);
+        expect(mapView.geoCenter.latitude).to.equal(52.514280462360155);
+        expect(mapView.geoCenter.longitude).to.equal(13.349968698429997);
+        const attitude = MapViewUtils.extractAttitude(mapView, mapView.camera);
+        // Account for floating point imprecision
+        expect(MathUtils.radToDeg(attitude.yaw)).to.be.closeTo(-20, 1e-13);
+        expect(MathUtils.radToDeg(attitude.pitch)).to.be.closeTo(10, 1e-13);
     });
 
     it("Correctly sets event listeners and handlers webgl context restored", function() {
