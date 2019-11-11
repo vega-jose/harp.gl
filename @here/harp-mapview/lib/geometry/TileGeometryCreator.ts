@@ -26,6 +26,7 @@ import {
     isSegmentsTechnique,
     isSolidLineTechnique,
     isSquaresTechnique,
+    isStandardTechnique,
     isTerrainTechnique,
     isTextTechnique,
     LineMarkerTechnique,
@@ -863,6 +864,14 @@ export class TileGeometryCreator {
                 this.addFeatureData(srcGeometry, technique, object);
                 this.addGeometryObjInfos(tile, srcGeometry, technique, object);
 
+                if (mapView.shadowsEnabled) {
+                    if (isExtrudedPolygonTechnique(technique)) {
+                        object.castShadow = true;
+                        object.receiveShadow = true;
+                    } else if (isStandardTechnique(technique)) {
+                        object.receiveShadow = true;
+                    }
+                }
                 if (isExtrudedPolygonTechnique(technique) || isFillTechnique(technique)) {
                     // filled polygons are normal meshes, and need transparency only when fading or
                     // dynamic properties is defined.
@@ -1392,12 +1401,10 @@ export class TileGeometryCreator {
     /**
      * Creates and add a background plane for the tile.
      */
-    addGroundPlane(tile: Tile) {
-        const mapView = tile.mapView;
+    addGroundPlane(tile: Tile, material: THREE.Material) {
         const dataSource = tile.dataSource;
         const projection = tile.projection;
 
-        const color = mapView.clearColor;
         const tmpV = new THREE.Vector3();
 
         if (tile.projection.type === ProjectionType.Spherical) {
@@ -1439,11 +1446,6 @@ export class TileGeometryCreator {
             }
             posAttr.needsUpdate = true;
 
-            const material = new MapMeshBasicMaterial({
-                color,
-                visible: true,
-                depthWrite: true
-            });
             const mesh = new THREE.Mesh(g, material);
             mesh.renderOrder = Number.MIN_SAFE_INTEGER;
             this.registerTileObject(tile, mesh, GeometryKind.Background);
@@ -1451,7 +1453,7 @@ export class TileGeometryCreator {
         } else {
             // Add a ground plane to the tile.
             tile.boundingBox.getSize(tmpV);
-            const groundPlane = this.createPlane(tmpV.x, tmpV.y, tile.center, color, true);
+            const groundPlane = this.createPlane(tmpV.x, tmpV.y, tile.center, material);
 
             this.registerTileObject(tile, groundPlane, GeometryKind.Background);
             tile.objects.push(groundPlane);
@@ -1509,7 +1511,7 @@ export class TileGeometryCreator {
      * @param {number} width Width of plane.
      * @param {number} height Height of plane.
      * @param {THREE.Vector3} planeCenter Center of plane.
-     * @param {number} colorHex Color of the plane mesh.
+     * @param {THREE.Material} material Material of the plane mesh.
      * @param {boolean} isVisible `True` to make the mesh visible.
      * @returns {THREE.Mesh} The created plane.
      */
@@ -1517,17 +1519,12 @@ export class TileGeometryCreator {
         width: number,
         height: number,
         planeCenter: THREE.Vector3,
-        colorHex: number,
-        isVisible: boolean
+        material: THREE.Material
     ): THREE.Mesh {
         const geometry = new THREE.PlaneGeometry(width, height, 1);
-        // TODO cache the material HARP-4207
-        const material = new MapMeshBasicMaterial({
-            color: colorHex,
-            visible: isVisible,
-            depthWrite: false
-        });
         const plane = new THREE.Mesh(geometry, material);
+        plane.receiveShadow = true;
+        plane.castShadow = false;
         plane.position.copy(planeCenter);
         // Render before everything else
         plane.renderOrder = Number.MIN_SAFE_INTEGER;
