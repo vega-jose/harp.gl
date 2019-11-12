@@ -106,7 +106,7 @@ export function tile2world(
 export function world2tile(
     extents: number,
     decodeInfo: OmvDecoder.DecodeInfo,
-    position: THREE.Vector2,
+    position: THREE.Vec2,
     flipY: boolean = false,
     target: THREE.Vector2
 ): THREE.Vector2 {

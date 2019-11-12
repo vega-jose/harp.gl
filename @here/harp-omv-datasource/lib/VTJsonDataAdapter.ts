@@ -15,7 +15,7 @@ import { ILogger } from "@here/harp-utils";
 import { Vector2 } from "three";
 import { IGeometryProcessor, ILineGeometry, IPolygonGeometry } from "./IGeometryProcessor";
 import { OmvFeatureFilter } from "./OmvDataFilter";
-import { OmvDataAdapter } from "./OmvDecoder";
+import { OmvDataAdapter, OmvDecoder } from "./OmvDecoder";
 import { isArrayBufferLike } from "./OmvUtils";
 
 const VT_JSON_EXTENTS = 4096;
@@ -111,7 +111,9 @@ export class VTJsonDataAdapter implements OmvDataAdapter {
         return true;
     }
 
-    process(tile: VTJsonTileInterface, tileKey: TileKey, geoBox: GeoBox) {
+    process(tile: VTJsonTileInterface, info: OmvDecoder.DecodeInfo) {
+        const tileKey = info.tileKey;
+
         for (const feature of tile.features) {
             const env = new MapEnv({
                 $layer: tile.layer,

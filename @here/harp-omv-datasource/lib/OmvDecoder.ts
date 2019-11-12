@@ -53,6 +53,7 @@ import { OmvTileInfoEmitter } from "./OmvTileInfoEmitter";
 import { OmvTomTomFeatureModifier } from "./OmvTomTomFeatureModifier";
 import { WorldTileProjectionCookie } from "./OmvUtils";
 import { StyleSetDataFilter } from "./StyleSetDataFilter";
+import { TiledGeoJsonDataAdapter } from "./TiledGeoJsonAdapter";
 import { VTJsonDataAdapter } from "./VTJsonDataAdapter";
 
 const logger = LoggerManager.instance.create("OmvDecoder", { enabled: false });
@@ -145,7 +146,7 @@ export interface OmvDataAdapter {
      * @param tileKey The TileKey of the enclosing Tile.
      * @param geoBox The GeoBox of the enclosing Tile.
      */
-    process(data: ArrayBufferLike | {}, tileKey: TileKey, geoBox: GeoBox): void;
+    process(data: ArrayBufferLike | {}, info: OmvDecoder.DecodeInfo): void;
 }
 
 export class OmvDecoder implements IGeometryProcessor {
@@ -175,6 +176,7 @@ export class OmvDecoder implements IGeometryProcessor {
             : styleSetDataFilter;
         // Register the default adapters.
         this.m_dataAdapters.push(new OmvProtobufDataAdapter(this, dataPreFilter, logger));
+        this.m_dataAdapters.push(new TiledGeoJsonDataAdapter(this, dataPreFilter, logger));
         this.m_dataAdapters.push(new VTJsonDataAdapter(this, dataPreFilter, logger));
     }
 
@@ -231,7 +233,7 @@ export class OmvDecoder implements IGeometryProcessor {
             );
         }
 
-        dataAdapter.process(data, tileKey, decodeInfo.geoBox);
+        dataAdapter.process(data, decodeInfo);
         const decodedTile = this.m_decodedTileEmitter.getDecodedTile();
 
         if (this.m_createTileInfo) {
@@ -271,7 +273,7 @@ export class OmvDecoder implements IGeometryProcessor {
 
         for (const adapter of this.m_dataAdapters.values()) {
             if (adapter.canProcess(data)) {
-                adapter.process(data, tileKey, decodeInfo.geoBox);
+                adapter.process(data, decodeInfo);
                 break;
             }
         }

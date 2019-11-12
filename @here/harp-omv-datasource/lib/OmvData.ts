@@ -11,7 +11,7 @@ import * as Long from "long";
 import { Vector2 } from "three";
 import { IGeometryProcessor, ILineGeometry, IPolygonGeometry } from "./IGeometryProcessor";
 import { OmvFeatureFilter } from "./OmvDataFilter";
-import { OmvDataAdapter } from "./OmvDecoder";
+import { OmvDataAdapter, OmvDecoder } from "./OmvDecoder";
 import { OmvGeometryType } from "./OmvDecoderDefs";
 import { isArrayBufferLike } from "./OmvUtils";
 import { com } from "./proto/vector_tile";
@@ -409,11 +409,11 @@ export class OmvProtobufDataAdapter implements OmvDataAdapter, OmvVisitor {
      * @param data The data payload to process.
      * @param tileKey The [[TileKey]] of the tile enclosing the data.
      */
-    process(data: ArrayBufferLike, tileKey: TileKey) {
+    process(data: ArrayBufferLike, info: OmvDecoder.DecodeInfo) {
         const payload = new Uint8Array(data);
         const proto = com.mapbox.pb.Tile.decode(payload);
 
-        this.m_tileKey = tileKey;
+        this.m_tileKey = info.tileKey;
 
         visitOmv(proto, this);
     }
