@@ -3090,8 +3090,8 @@ export class MapView extends THREE.EventDispatcher {
                 }
                 if (light.castShadow) {
                     light.shadow.bias = 0.00001;
-                    light.shadow.mapSize.width = 4096;
-                    light.shadow.mapSize.height = 4096;
+                    light.shadow.mapSize.width = 1024;
+                    light.shadow.mapSize.height = 1024;
                     Object.assign(light.shadow.camera, {
                         top: 5000,
                         left: -5000,

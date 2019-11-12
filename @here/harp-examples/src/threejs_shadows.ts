@@ -27,6 +27,7 @@ import { APIFormat, OmvDataSource } from "@here/harp-omv-datasource";
 import { GUI } from "dat.gui";
 import { ShadowMapViewer } from "three/examples/jsm/utils/ShadowMapViewer";
 import { accessToken } from "../config";
+import { Box3, Euler } from "three";
 
 export namespace ThreejsShadows {
     function initializeMapView(id: string, theme: Theme): MapView {
@@ -40,7 +41,7 @@ export namespace ThreejsShadows {
         mapControls.maxTiltAngle = 50;
 
         const NY = new GeoCoordinates(40.707, -74.01);
-        map.lookAt(NY, 3000, 45, 0);
+        map.lookAt(NY, 2000, 45, 0);
         const ui = new MapControlsUI(mapControls);
         canvas.parentElement!.appendChild(ui.domElement);
         map.resize(window.innerWidth, window.innerHeight);
@@ -89,54 +90,105 @@ export namespace ThreejsShadows {
         map.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
         let shadowMapViewerCreated = false;
-        const updateLightCamera = () => {
+        const updateLightCamera = (light: THREE.DirectionalLight) => {
+            const lightCamera = light.shadow.camera;
+            const lightQuaternion = lightCamera.quaternion;
+            const camera = new THREE.Camera();
+            camera.projectionMatrixInverse.copy(
+                map.camera.projectionMatrixInverse
+            );
+            const w = 1;
+            const h = 1;
+
+            const NDCToView = (x: number, y: number, z: number) => {
+                return new THREE.Vector3(x, y, z)
+                    .unproject(camera)
+                // .applyQuaternion(lightQuaternion)
+                // .sub(lightCamera.position);
+            }
+            // near
+            const n1 = NDCToView(-w, -h, -1);
+            const n2 = NDCToView(w, -h, -1)
+            const n3 = NDCToView(-w, h, -1)
+            const n4 = NDCToView(w, h, -1)
+
+            // far
+            const f1 = NDCToView(-w, -h, 1)
+            const f2 = NDCToView(w, -h, 1)
+            const f3 = NDCToView(-w, h, 1)
+            const f4 = NDCToView(w, h, 1)
+
+            console.log(new Euler().setFromQuaternion(lightQuaternion));
+            const frustumPoints = [n1, n2, n3, n4, f1, f2, f3, f4];
+            console.log(n1);
+            console.log(n2);
+            console.log(n3);
+            console.log(n4);
+            console.log(f1);
+            console.log(f2);
+            console.log(f3);
+            console.log(f4);
+            const box = new Box3();
+            frustumPoints.forEach(point => box.expandByPoint(point));
+            // options.left = box.min.x;
+            // options.right = box.max.x;
+            // options.top = box.max.y;
+            // options.bottom = box.min.y;
+            // options.near = box.min.z;
+            // options.far = box.max.z;
+            // console.log(box);
+
+            if (shadowMapViewerCreated === false) {
+                shadowMapViewerCreated = true;
+                const lightShadowMapViewer = new ShadowMapViewer(light) as any;
+                lightShadowMapViewer.position.x = 10;
+                lightShadowMapViewer.position.y = 10;
+                lightShadowMapViewer.size.width = 4096 / 16;
+                lightShadowMapViewer.size.height = 4096 / 16;
+                lightShadowMapViewer.update();
+                map.addEventListener(MapViewEventNames.AfterRender, () => {
+                    lightShadowMapViewer.render(map.renderer);
+                });
+            }
+            Object.assign(light.shadow.camera, options);
+            light.shadow.camera.updateProjectionMatrix();
+        };
+
+        const updateLights = () => {
             map.scene.children.forEach((obj: THREE.Object3D) => {
                 if ((obj as any).isDirectionalLight) {
                     const light = obj as THREE.DirectionalLight;
-                    if (shadowMapViewerCreated === false) {
-                        shadowMapViewerCreated = true;
-                        const lightShadowMapViewer = new ShadowMapViewer(light) as any;
-                        lightShadowMapViewer.position.x = 10;
-                        lightShadowMapViewer.position.y = 10;
-                        lightShadowMapViewer.size.width = 2048 / 4;
-                        lightShadowMapViewer.size.height = 1024 / 4;
-                        lightShadowMapViewer.update();
-                        map.addEventListener(MapViewEventNames.AfterRender, () => {
-                            lightShadowMapViewer.render(map.renderer);
-                        });
-                    }
-                    Object.assign(light.shadow.camera, options);
-                    light.shadow.camera.updateProjectionMatrix();
+                    updateLightCamera(light);
                 }
             });
             map.update();
         };
-        promise.then(updateLightCamera);
+        promise.then(updateLights);
 
         const gui = new GUI({ width: 300 });
-        gui.add(options, "top", 0, 10000).onChange(updateLightCamera);
-        gui.add(options, "left", -10000, 0).onChange(updateLightCamera);
-        gui.add(options, "right", 0, 10000).onChange(updateLightCamera);
-        gui.add(options, "bottom", -10000, 0).onChange(updateLightCamera);
-        gui.add(options, "near", -1000, 100).onChange(updateLightCamera);
-        gui.add(options, "far", 0, 10000).onChange(updateLightCamera);
+        gui.add(options, "top", 0, 10000).onChange(updateLights);
+        gui.add(options, "left", -10000, 0).onChange(updateLights);
+        gui.add(options, "right", 0, 10000).onChange(updateLights);
+        gui.add(options, "bottom", -10000, 0).onChange(updateLights);
+        gui.add(options, "near", -1000, 100).onChange(updateLights);
+        gui.add(options, "far", 0, 10000).onChange(updateLights);
 
-        const updateLightPosition = () => {
-            map.scene.children.forEach((obj: THREE.Object3D) => {
-                if ((obj as any).isDirectionalLight) {
-                    const light = obj as THREE.DirectionalLight;
+        // const updateLightPosition = () => {
+        //     map.scene.children.forEach((obj: THREE.Object3D) => {
+        //         if ((obj as any).isDirectionalLight) {
+        //             const light = obj as THREE.DirectionalLight;
 
-                    const time = Date.now() / 1000;
-                    light.position.set(Math.cos(time), Math.sin(time), 1);
-                    map.update();
-                }
-            });
+        //             const time = Date.now() / 1000;
+        //             light.position.set(Math.cos(time), Math.sin(time), 1);
+        //             map.update();
+        //         }
+        //     });
 
-            setTimeout(updateLightPosition, 10);
-        };
-        setTimeout(() => {
-            updateLightPosition();
-        }, 1000);
+        //     setTimeout(updateLightPosition, 10);
+        // };
+        // setTimeout(() => {
+        //     updateLightPosition();
+        // }, 1000);
 
         return map;
     }
@@ -146,7 +198,7 @@ export namespace ThreejsShadows {
             const style = styleDeclaration as Style;
             if (style.technique === "fill") {
                 (style as any).technique = "standard";
-                ((style as any) as StandardStyle).attr!.roughness = 1.0;
+                // ((style as any) as StandardStyle).attr!.roughness = 1.0;
             }
         }
     }
@@ -172,7 +224,7 @@ export namespace ThreejsShadows {
                 intensity: 1,
                 direction: {
                     x: 0,
-                    y: 0.5,
+                    y: 0,
                     z: 1
                 },
                 castShadow: true
@@ -199,8 +251,10 @@ export namespace ThreejsShadows {
         });
     }
 
-    ThemeLoader.load("resources/berlin_tilezen_base.json").then((theme: Theme) => {
-        patchTheme(theme);
-        initializeMapView("mapCanvas", theme);
-    });
+    ThemeLoader.load("resources/berlin_tilezen_base.json").then(
+        (theme: Theme) => {
+            patchTheme(theme);
+            initializeMapView("mapCanvas", theme);
+        }
+    );
 }
