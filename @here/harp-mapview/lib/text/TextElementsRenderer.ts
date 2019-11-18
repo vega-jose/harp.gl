@@ -1580,6 +1580,7 @@ export class TextElementsRenderer {
         // Check if there is need to check for screen space for the label's icon.
         const poiInfo = pointLabel.poiInfo;
         let iconSpaceAvailable = true;
+        let iconRejected = false;
 
         // Check if icon should be rendered at this zoomLevel
         const renderIcon =
@@ -1619,46 +1620,17 @@ export class TextElementsRenderer {
             }
 
             if (groupState.visited) {
-                iconSpaceAvailable = !this.m_screenCollisions.isAllocated(tempBox2D);
+                iconSpaceAvailable =
+                    poiInfo!.mayOverlap === true || !this.m_screenCollisions.isAllocated(tempBox2D);
 
-                // Reserve screen space if necessary, return false if failed:
-                if (
-                    // Check if free screen space is available:
-                    !iconSpaceAvailable
-                ) {
-                    if (!iconRenderState.isVisible()) {
-                        if (placementStats) {
-                            ++placementStats.numNotVisible;
-                        }
-                        return false;
-                    } else if (!(poiInfo!.mayOverlap === true) && !iconRenderState.isFadingOut()) {
-                        iconRenderState.startFadeOut(
-                            this.m_viewState.frameNumber,
-                            renderParams.time
-                        );
-                        if (hasText && textRenderState!.isVisible()) {
-                            textRenderState!.startFadeOut(
-                                this.m_viewState.frameNumber,
-                                renderParams.time
-                            );
-                        }
+                if (!iconSpaceAvailable && !iconRenderState.isVisible()) {
+                    if (placementStats) {
+                        ++placementStats.numNotVisible;
                     }
-                } else {
-                    if (
-                        iconRenderState.lastFrameNumber < this.m_viewState.frameNumber - 1 ||
-                        iconRenderState.isFadingOut() ||
-                        iconRenderState.isFadedOut()
-                    ) {
-                        iconRenderState.startFadeIn(
-                            this.m_viewState.frameNumber,
-                            renderParams.time
-                        );
-                    }
+                    return false;
                 }
-            } else if (iconRenderState.isVisible()) {
-                iconRenderState.startFadeOut(this.m_viewState.frameNumber, renderParams.time);
-                iconRenderState.lastFrameNumber = this.m_viewState.frameNumber;
             }
+            iconRejected = !groupState.visited || !iconSpaceAvailable;
         }
 
         // Check if label should be rendered at this zoomLevel
@@ -1716,7 +1688,8 @@ export class TextElementsRenderer {
 
             const textSpaceAvailable =
                 pointLabel.textMayOverlap || !this.m_screenCollisions.isAllocated(tempBox2D);
-            const textRejected = !groupState.visited || !textSpaceAvailable;
+            const textRejected = !groupState.visited || iconRejected || !textSpaceAvailable;
+            iconRejected = iconRejected || (textRejected && !textIsOptional);
 
             if (textRejected && !labelState.visible) {
                 if (placementStats) {
@@ -1729,19 +1702,7 @@ export class TextElementsRenderer {
                 textRejected && textRenderState!.isVisible() && !textRenderState!.isFadingOut();
 
             if (textWillFadeOut) {
-                const textStartedFadeOut = textRenderState!.checkStartFadeOut(
-                    this.m_viewState.frameNumber,
-                    renderParams.time
-                );
-                renderParams.fadeAnimationRunning =
-                    renderParams.fadeAnimationRunning || textStartedFadeOut;
-
-                const iconWillFadeOut =
-                    (!renderIcon || !textIsOptional) && iconRenderState.isVisible();
-
-                if (iconWillFadeOut) {
-                    iconRenderState.startFadeOut(this.m_viewState.frameNumber, renderParams.time);
-                }
+                textRenderState!.checkStartFadeOut(this.m_viewState.frameNumber, renderParams.time);
             }
 
             const textNeedsDraw = textSpaceAvailable || textRenderState!.isFading();
@@ -1768,77 +1729,76 @@ export class TextElementsRenderer {
                         poiInfo.renderTextDuringMovements === true) &&
                     !iconRenderState.isFadedOut()
                 ) {
-                    let textFading = false;
                     if (
                         !textRenderState!.isFadingOut() &&
                         textSpaceAvailable &&
                         iconSpaceAvailable
                     ) {
-                        textFading = textRenderState!.checkStartFadeIn(
+                        textRenderState!.checkStartFadeIn(
                             this.m_viewState.frameNumber,
                             renderParams.time,
                             true
                         );
-                    } else {
-                        textFading = textRenderState!.isFading();
                     }
 
-                    renderParams.fadeAnimationRunning =
-                        renderParams.fadeAnimationRunning ||
-                        textRenderState!.isFadingOut() ||
-                        textFading;
-
                     const opacity = textRenderState!.opacity;
-                    const backgroundIsVisible =
-                        pointLabel.renderStyle!.backgroundOpacity > 0 &&
-                        textCanvas.textRenderStyle.fontSize.backgroundSize > 0;
+                    if (opacity > 0) {
+                        const backgroundIsVisible =
+                            pointLabel.renderStyle!.backgroundOpacity > 0 &&
+                            textCanvas.textRenderStyle.fontSize.backgroundSize > 0;
 
-                    temp.bufferAdditionParams.layer = pointLabel.renderOrder;
-                    temp.bufferAdditionParams.position = tempPosition;
-                    temp.bufferAdditionParams.scale = textScale;
-                    temp.bufferAdditionParams.opacity =
-                        opacity * distanceFadeFactor * pointLabel.renderStyle!.opacity;
-                    temp.bufferAdditionParams.backgroundOpacity = backgroundIsVisible
-                        ? temp.bufferAdditionParams.opacity *
-                          pointLabel.renderStyle!.backgroundOpacity
-                        : 0.0;
-                    temp.bufferAdditionParams.pickingData = pointLabel.userData
-                        ? pointLabel
-                        : undefined;
-                    textCanvas.addTextBufferObject(
-                        pointLabel.textBufferObject!,
-                        temp.bufferAdditionParams
-                    );
-                }
-                if (placementStats) {
-                    placementStats.numRenderedPoiTexts++;
+                        temp.bufferAdditionParams.layer = pointLabel.renderOrder;
+                        temp.bufferAdditionParams.position = tempPosition;
+                        temp.bufferAdditionParams.scale = textScale;
+                        temp.bufferAdditionParams.opacity =
+                            opacity * distanceFadeFactor * pointLabel.renderStyle!.opacity;
+                        temp.bufferAdditionParams.backgroundOpacity = backgroundIsVisible
+                            ? temp.bufferAdditionParams.opacity *
+                              pointLabel.renderStyle!.backgroundOpacity
+                            : 0.0;
+                        temp.bufferAdditionParams.pickingData = pointLabel.userData
+                            ? pointLabel
+                            : undefined;
+                        textCanvas.addTextBufferObject(
+                            pointLabel.textBufferObject!,
+                            temp.bufferAdditionParams
+                        );
+                        renderParams.fadeAnimationRunning =
+                            renderParams.fadeAnimationRunning || textRenderState!.isFading();
+                        if (placementStats) {
+                            placementStats.numRenderedPoiTexts++;
+                        }
+                    }
                 }
             }
         }
         // ... and render the icon (if any).
         if (renderIcon && poiRenderer.poiIsRenderable(poiInfo!)) {
-            const iconStartedFadeIn = iconRenderState.checkStartFadeIn(
-                this.m_viewState.frameNumber,
-                renderParams.time
-            );
-            renderParams.fadeAnimationRunning =
-                renderParams.fadeAnimationRunning || iconStartedFadeIn;
+            if (iconRejected) {
+                iconRenderState!.startFadeOut(this.m_viewState.frameNumber, renderParams.time);
+            } else if (iconSpaceAvailable) {
+                iconRenderState!.startFadeIn(this.m_viewState.frameNumber, renderParams.time);
+            }
 
-            poiRenderer.renderPoi(
-                poiInfo!,
-                tempPoiScreenPosition,
-                this.m_screenCollisions,
-                labelState.renderDistance,
-                distanceScaleFactor,
-                poiInfo!.reserveSpace !== false,
-                iconRenderState.opacity * distanceFadeFactor,
-                this.m_viewState.zoomLevel
-            );
+            if (!iconRenderState!.isFadedOut()) {
+                poiRenderer.renderPoi(
+                    poiInfo!,
+                    tempPoiScreenPosition,
+                    this.m_screenCollisions,
+                    labelState.renderDistance,
+                    distanceScaleFactor,
+                    poiInfo!.reserveSpace !== false,
+                    iconRenderState.opacity * distanceFadeFactor,
+                    this.m_viewState.zoomLevel
+                );
 
-            iconRenderState.lastFrameNumber = this.m_viewState.frameNumber;
+                iconRenderState.lastFrameNumber = this.m_viewState.frameNumber;
+                renderParams.fadeAnimationRunning =
+                    renderParams.fadeAnimationRunning || iconRenderState!.isFading();
 
-            if (placementStats) {
-                placementStats.numRenderedPoiIcons++;
+                if (placementStats) {
+                    placementStats.numRenderedPoiIcons++;
+                }
             }
         }
         renderParams.numRenderedTextElements++;
