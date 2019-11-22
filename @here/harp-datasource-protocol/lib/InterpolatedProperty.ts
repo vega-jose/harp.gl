@@ -20,6 +20,7 @@ import {
     StringEncodedColorFormats,
     StringEncodedMetricFormats,
     StringEncodedNumeralFormat,
+    StringEncodedNumeralFormatMaxSize,
     StringEncodedNumeralFormats,
     StringEncodedNumeralType
 } from "./StringEncodedNumeral";
@@ -34,6 +35,7 @@ const interpolants = [
 ];
 
 const tmpColor = new THREE.Color();
+const tmpBuffer = new Array<number>(StringEncodedNumeralFormatMaxSize);
 
 /**
  * Checks if a property is interpolated.
@@ -335,7 +337,8 @@ function procesStringEnocodedNumeralInterpolatedProperty(
     for (let valueIdx = 0; valueIdx < prop.values.length; ++valueIdx) {
         for (const valueFormat of allowedValueFormats) {
             const value = prop.values[valueIdx];
-            if (!valueFormat.regExp.test(value)) {
+            const matched = valueFormat.decoder(value, tmpBuffer);
+            if (!matched) {
                 continue;
             }
 
@@ -344,9 +347,8 @@ function procesStringEnocodedNumeralInterpolatedProperty(
                 needsMask = true;
             }
 
-            const result = valueFormat.decoder(value);
-            for (let i = 0; i < result.length; ++i) {
-                propValues[valueIdx * valueFormat.size + i] = result[i];
+            for (let i = 0; i < valueFormat.size; ++i) {
+                propValues[valueIdx * valueFormat.size + i] = tmpBuffer[i];
             }
             break;
         }
