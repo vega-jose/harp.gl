@@ -512,7 +512,6 @@ export class PoiManager {
             fadeFar
         );
 
-        textElement.isPointLabel = true;
         textElement.mayOverlap = technique.textMayOverlap === true;
         textElement.reserveSpace = technique.textReserveSpace !== false;
         textElement.alwaysOnTop = technique.alwaysOnTop === true;

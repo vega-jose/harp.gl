@@ -30,10 +30,12 @@ export const DEFAULT_FADE_TIME = 800;
  * @hidden
  */
 export class RenderState {
+    private m_state = FadingState.Undefined;
+    private m_visible = false;
+
     /**
      * Create a `RenderState`.
      *
-     * @param state Fading state.
      * @param value Current fading value [0..1].
      * @param startTime Time stamp the fading started.
      * @param opacity Computed opacity depending on value.
@@ -41,7 +43,6 @@ export class RenderState {
      *                        obvious states, like popping up after being hidden.
      */
     constructor(
-        public state = FadingState.Undefined,
         public value = 0.0,
         public startTime = 0,
         public opacity = 1.0,
@@ -52,7 +53,8 @@ export class RenderState {
      * Reset existing `RenderState` to appear like a fresh state.
      */
     reset() {
-        this.state = FadingState.Undefined;
+        this.m_state = FadingState.Undefined;
+        this.m_visible = false;
         this.value = 0.0;
         this.startTime = 0.0;
         this.opacity = 1.0;
@@ -60,10 +62,18 @@ export class RenderState {
     }
 
     /**
+     * @returns `true` if element state is `FadingState.Undefined`.
+     */
+    isUndefined(): boolean {
+        return this.m_state === FadingState.Undefined;
+    }
+
+    /**
      * @returns `true` if element is either fading in or fading out.
      */
     isFading(): boolean {
-        const fading = this.state === FadingState.FadingIn || this.state === FadingState.FadingOut;
+        const fading =
+            this.m_state === FadingState.FadingIn || this.m_state === FadingState.FadingOut;
         return fading;
     }
 
@@ -71,7 +81,7 @@ export class RenderState {
      * @returns `true` if element is fading in.
      */
     isFadingIn(): boolean {
-        const fadingIn = this.state === FadingState.FadingIn;
+        const fadingIn = this.m_state === FadingState.FadingIn;
         return fadingIn;
     }
 
@@ -79,7 +89,7 @@ export class RenderState {
      * @returns `true` if element is fading out.
      */
     isFadingOut(): boolean {
-        const fadingOut = this.state === FadingState.FadingOut;
+        const fadingOut = this.m_state === FadingState.FadingOut;
         return fadingOut;
     }
 
@@ -87,7 +97,7 @@ export class RenderState {
      * @returns `true` if element is done with fading in.
      */
     isFadedIn(): boolean {
-        const fadedIn = this.state === FadingState.FadedIn;
+        const fadedIn = this.m_state === FadingState.FadedIn;
         return fadedIn;
     }
 
@@ -95,7 +105,7 @@ export class RenderState {
      * @returns `true` if element is done with fading out.
      */
     isFadedOut(): boolean {
-        const fadedOut = this.state === FadingState.FadedOut;
+        const fadedOut = this.m_state === FadingState.FadedOut;
         return fadedOut;
     }
 
@@ -103,11 +113,7 @@ export class RenderState {
      * @returns `true` if element is either faded in, is fading in or is fading out.
      */
     isVisible(): boolean {
-        const visible =
-            this.state === FadingState.FadingIn ||
-            this.state === FadingState.FadedIn ||
-            this.state === FadingState.FadingOut;
-        return visible;
+        return this.m_visible;
     }
 
     /**
@@ -124,7 +130,7 @@ export class RenderState {
         // Fade-in after skipping rendering during movement
         if (
             forceFadeIn ||
-            this.state === FadingState.Undefined ||
+            this.m_state === FadingState.Undefined ||
             this.lastFrameNumber < frameNumber - 1
         ) {
             this.startFadeIn(frameNumber, time);
@@ -149,7 +155,7 @@ export class RenderState {
         // Fade-in after skipping rendering during movement
         if (
             forceFadeOut ||
-            this.state === FadingState.Undefined ||
+            this.m_state === FadingState.Undefined ||
             this.lastFrameNumber < frameNumber - 1
         ) {
             this.startFadeOut(frameNumber, time);
@@ -173,11 +179,11 @@ export class RenderState {
             this.reset();
         }
 
-        if (this.state === FadingState.FadingIn || this.state === FadingState.FadedIn) {
+        if (this.m_state === FadingState.FadingIn || this.m_state === FadingState.FadedIn) {
             return;
         }
 
-        if (this.state === FadingState.FadingOut) {
+        if (this.m_state === FadingState.FadingOut) {
             // The fadeout is not complete: compute the virtual fadingStartTime in the past, to get
             // a correct end time:
             this.value = 1.0 - this.value;
@@ -188,7 +194,8 @@ export class RenderState {
             this.opacity = 0;
         }
 
-        this.state = FadingState.FadingIn;
+        this.m_state = FadingState.FadingIn;
+        this.m_visible = true;
     }
 
     /**
@@ -204,11 +211,11 @@ export class RenderState {
             this.reset();
         }
 
-        if (this.state === FadingState.FadingOut || this.state === FadingState.FadedOut) {
+        if (this.m_state === FadingState.FadingOut || this.m_state === FadingState.FadedOut) {
             return;
         }
 
-        if (this.state === FadingState.FadingIn) {
+        if (this.m_state === FadingState.FadingIn) {
             // The fade-in is not complete: compute the virtual fadingStartTime in the past, to get
             // a correct end time:
             this.startTime = time - this.value * DEFAULT_FADE_TIME;
@@ -219,7 +226,7 @@ export class RenderState {
             this.opacity = 1;
         }
 
-        this.state = FadingState.FadingOut;
+        this.m_state = FadingState.FadingOut;
     }
 
     /**
@@ -229,10 +236,11 @@ export class RenderState {
      *
      * @param time Current time.
      * @param disableFading `true` if fading is disabled, `false` otherwise.
+     * @returns `true` if visible after the update, false otherwise.
      */
-    updateFading(time: number, disableFading: boolean) {
-        if (this.state !== FadingState.FadingIn && this.state !== FadingState.FadingOut) {
-            return;
+    updateFading(time: number, disableFading: boolean): boolean {
+        if (this.m_state !== FadingState.FadingIn && this.m_state !== FadingState.FadingOut) {
+            return this.m_visible;
         }
 
         if (this.startTime === 0) {
@@ -240,14 +248,15 @@ export class RenderState {
         }
 
         const fadingTime = time - this.startTime;
-        const startValue = this.state === FadingState.FadingIn ? 0 : 1;
-        const endValue = this.state === FadingState.FadingIn ? 1 : 0;
+        const startValue = this.m_state === FadingState.FadingIn ? 0 : 1;
+        const endValue = this.m_state === FadingState.FadingIn ? 1 : 0;
 
         if (disableFading || fadingTime >= DEFAULT_FADE_TIME) {
             this.value = 1.0;
             this.opacity = endValue;
-            this.state =
-                this.state === FadingState.FadingIn ? FadingState.FadedIn : FadingState.FadedOut;
+            this.m_state =
+                this.m_state === FadingState.FadingIn ? FadingState.FadedIn : FadingState.FadedOut;
+            this.m_visible = this.m_state === FadingState.FadedIn;
         } else {
             // TODO: HARP-7648. Do this once for all labels (calculate the last frame value
             // increment).
@@ -259,5 +268,6 @@ export class RenderState {
                 1
             );
         }
+        return this.m_visible;
     }
 }
