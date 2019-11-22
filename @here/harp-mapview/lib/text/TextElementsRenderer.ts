@@ -1053,11 +1053,10 @@ export class TextElementsRenderer {
         const worldOffsetX = projection.worldExtent(0, 0).max.x * tile.offset;
 
         const textElementSelection: TextElementFilter = (
-            textElement: TextElement,
-            lastFrameNumber?: number
+            textElementState: TextElementState
         ): number | undefined => {
             let { result, viewDistance } = checkReadyForPlacement(
-                textElement,
+                textElementState.element,
                 tile,
                 worldOffsetX,
                 this.m_viewState,
@@ -1069,7 +1068,7 @@ export class TextElementsRenderer {
 
             if (
                 result === PrePlacementResult.Ok &&
-                !this.m_textElementStateCache.deduplicateElement(textElement, lastFrameNumber)
+                !this.m_textElementStateCache.deduplicateElement(textElementState)
             ) {
                 result = PrePlacementResult.Duplicate;
                 viewDistance = undefined;
